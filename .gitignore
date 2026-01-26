@@ -52,9 +52,8 @@ coverage.xml
 # ============================================
 
 # AWS credential files (never commit keys)
-.aws/
-credentials
-config
+.aws/credentials
+.aws/config
 
 # SageMaker generated artifacts
 **/model.tar.gz

@@ -1,0 +1,41 @@
+datasets:
+
+  noaa_storm_events:
+    source: "https://www.ncei.noaa.gov/products/storm-events-database"
+    format: csv_gz
+    local_raw_path: data/raw/noaa/
+    s3_bronze_prefix: bronze/noaa/
+    partitions:
+      - year
+    notes: "Multiple CSVs per year (details, fatalities, locations)"
+
+  fema_disaster_declarations:
+    source: "https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries.csv"
+    format: csv
+    local_raw_path: data/raw/fema/
+    s3_bronze_prefix: bronze/fema/
+    partitions: []
+    notes: "County FIPS sometimes embedded in combined codes"
+
+  fema_housing_assistance:
+    source: "https://www.fema.gov/api/open/v2/IpawsRegistrantsHousingAssistance.csv"
+    format: csv
+    local_raw_path: data/raw/fema/
+    s3_bronze_prefix: bronze/fema/
+    partitions: []
+
+  nri_county:
+    source: "https://hazards.fema.gov/nri/"
+    format: csv
+    local_raw_path: data/raw/nri/
+    s3_bronze_prefix: bronze/nri/
+    partitions: []
+    notes: "ZIP file extracted locally"
+
+  census_acs_5yr:
+    source: "https://api.censusreporter.org"
+    format: csv
+    local_raw_path: data/raw/census/
+    s3_bronze_prefix: bronze/census/
+    partitions: []
+    notes: "County-level ACS 2022 5-year estimates"
