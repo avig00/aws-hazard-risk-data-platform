@@ -1,0 +1,76 @@
+{
+  "generated_at_utc": "2026-01-27T06:39:36.264588+00:00",
+  "project_root": "/Users/vikasvig/Desktop/portfolio_projects/aws-hazard-risk-data-platform",
+  "base_data_dir": "/Users/vikasvig/Desktop/portfolio_projects/aws-hazard-risk-data-platform/data/raw",
+  "phase": "phase_1_local_load",
+  "validation": {
+    "status": "PASS",
+    "details": {
+      "NOAA": {
+        "status": "PASS",
+        "message": "NOAA coverage complete: 72/72 files (2000\u20132023 x 3 types)"
+      },
+      "FEMA": {
+        "status": "PASS",
+        "message": "FEMA files present: 3/3"
+      },
+      "NRI": {
+        "status": "PASS",
+        "message": "NRI file present with 3,232 rows"
+      },
+      "CENSUS": {
+        "status": "PASS",
+        "message": "Census files present: 5/5 (county-scale row counts look OK)"
+      }
+    }
+  },
+  "datasets": {
+    "noaa": {
+      "file_count": 72,
+      "total_bytes": 271165027,
+      "total_mb": 271.17,
+      "sample_files": [
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2000.csv.gz",
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2001.csv.gz",
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2002.csv.gz",
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2003.csv.gz",
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2004.csv.gz",
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2005.csv.gz",
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2006.csv.gz",
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2007.csv.gz",
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2008.csv.gz",
+        "data/raw/noaa/StormEvents_details-ftp_v1.0_d2009.csv.gz"
+      ]
+    },
+    "fema": {
+      "file_count": 3,
+      "total_bytes": 64845980,
+      "total_mb": 64.85,
+      "sample_files": [
+        "data/raw/fema/disaster_declarations.csv",
+        "data/raw/fema/housing_assistance_owners.csv",
+        "data/raw/fema/housing_assistance_renters.csv"
+      ]
+    },
+    "nri": {
+      "file_count": 1,
+      "total_bytes": 20628157,
+      "total_mb": 20.63,
+      "sample_files": [
+        "data/raw/nri/nri_counties.csv"
+      ]
+    },
+    "census": {
+      "file_count": 5,
+      "total_bytes": 3616669,
+      "total_mb": 3.62,
+      "sample_files": [
+        "data/raw/census/acs5_2022_B01001_county.csv",
+        "data/raw/census/acs5_2022_B15003_county.csv",
+        "data/raw/census/acs5_2022_B19013_county.csv",
+        "data/raw/census/acs5_2022_B23025_county.csv",
+        "data/raw/census/acs5_2022_B25077_county.csv"
+      ]
+    }
+  }
+}

@@ -34,6 +34,10 @@ from typing import Dict, List, Tuple
 
 import requests
 
+import json
+from datetime import datetime, timezone
+
+
 # NRI + Census writes use pandas for convenience, but tests will still run without pandas.
 try:
     import pandas as pd
@@ -496,7 +500,30 @@ def validate_census() -> Tuple[bool, str]:
 
     return True, f"Census files present: {len(CENSUS_EXPECTED)}/{len(CENSUS_EXPECTED)} (county-scale row counts look OK)"
 
-def run_validations() -> bool:
+# def run_validations() -> bool:
+#     print("\n=== RUNNING PHASE 1 VALIDATIONS ===")
+
+#     checks = [
+#         ("NOAA", validate_noaa),
+#         ("FEMA", validate_fema),
+#         ("NRI", validate_nri),
+#         ("CENSUS", validate_census),
+#     ]
+
+#     all_ok = True
+#     for name, fn in checks:
+#         ok, msg = fn()
+#         status = "PASS" if ok else "FAIL"
+#         print(f"[{status}] {name}: {msg}")
+#         all_ok = all_ok and ok
+
+#     if all_ok:
+#         print("\n PHASE 1 PASS: All datasets downloaded and validated.")
+#     else:
+#         print("\n PHASE 1 FAIL: One or more validations failed. Fix issues and rerun.")
+#     return all_ok
+
+def run_validations() -> tuple[bool, dict]:
     print("\n=== RUNNING PHASE 1 VALIDATIONS ===")
 
     checks = [
@@ -507,21 +534,93 @@ def run_validations() -> bool:
     ]
 
     all_ok = True
+    details = {}
+
     for name, fn in checks:
         ok, msg = fn()
         status = "PASS" if ok else "FAIL"
         print(f"[{status}] {name}: {msg}")
+        details[name] = {"status": status, "message": msg}
         all_ok = all_ok and ok
 
     if all_ok:
         print("\n PHASE 1 PASS: All datasets downloaded and validated.")
     else:
         print("\n PHASE 1 FAIL: One or more validations failed. Fix issues and rerun.")
-    return all_ok
+
+    return all_ok, details
+
 
 # ======================================================================================
 # RUN ALL DOWNLOADS + VALIDATIONS
 # ======================================================================================
+
+def write_lightweight_audit_summary(
+    validation_passed: bool,
+    validation_details: dict,
+    out_path: Path | None = None,
+    sample_filenames: int = 10,
+) -> Path:
+    """
+    Writes a lightweight JSON audit summary (no checksums, no row counts).
+
+    Includes:
+      - timestamp
+      - validation status + per-check messages
+      - file counts per dataset
+      - total bytes/MB per dataset
+      - optional sample filenames per dataset
+    """
+    docs_dir = PROJECT_ROOT / "docs"
+    ensure_dir(docs_dir)
+
+    if out_path is None:
+        out_path = docs_dir / "data_audit_phase1_summary.json"
+
+    def list_files(ds: str) -> list[Path]:
+        if ds == "noaa":
+            p = BASE_DATA_DIR / "noaa"
+            return sorted(p.glob("StormEvents_*_d????.csv.gz")) if p.exists() else []
+        if ds == "fema":
+            p = BASE_DATA_DIR / "fema"
+            return sorted(p.glob("*.csv")) if p.exists() else []
+        if ds == "nri":
+            p = BASE_DATA_DIR / "nri"
+            return sorted(p.glob("*.csv")) if p.exists() else []
+        if ds == "census":
+            p = BASE_DATA_DIR / "census"
+            return sorted(p.glob("*.csv")) if p.exists() else []
+        return []
+
+    datasets = ["noaa", "fema", "nri", "census"]
+    summary = {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "project_root": str(PROJECT_ROOT),
+        "base_data_dir": str(BASE_DATA_DIR),
+        "phase": "phase_1_local_load",
+        "validation": {
+            "status": "PASS" if validation_passed else "FAIL",
+            "details": validation_details,  # { "NOAA": {"status": "...", "message": "..."}, ... }
+        },
+        "datasets": {},
+    }
+
+    for ds in datasets:
+        files = list_files(ds)
+        total_bytes = sum(f.stat().st_size for f in files)
+        sample = [str(f.relative_to(PROJECT_ROOT)) for f in files[:sample_filenames]]
+
+        summary["datasets"][ds] = {
+            "file_count": len(files),
+            "total_bytes": total_bytes,
+            "total_mb": round(total_bytes / 1_000_000, 2),
+            "sample_files": sample,
+        }
+
+    out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(f"[AUDIT] Wrote lightweight Phase 1 audit summary to: {out_path}")
+    return out_path
+
 
 if __name__ == "__main__":
     print("\n=== DOWNLOADING NOAA DATA ===")
@@ -550,5 +649,11 @@ if __name__ == "__main__":
 
     print("\n=== ALL DOWNLOADS COMPLETE (WITH WARNINGS IF ANY) ===")
 
-    ok = run_validations()
+    ok, details = run_validations()
+    write_lightweight_audit_summary(
+        validation_passed=ok,
+        validation_details=details,
+        sample_filenames=10
+    )
     sys.exit(0 if ok else 1)
+
