@@ -1,0 +1,31 @@
+{
+    "bucket": "aws-hazard-risk-vigamogh-dev",
+    "base_prefix": "hazard/bronze",
+  
+    "noaa": {
+      "details": "hazard/bronze/noaa/details",
+      "fatalities": "hazard/bronze/noaa/fatalities",
+      "locations": "hazard/bronze/noaa/locations"
+    },
+  
+    "fema": {
+      "disaster_declarations": "hazard/bronze/fema/disaster_declarations",
+      "housing_assistance_owners": "hazard/bronze/fema/housing_assistance_owners",
+      "housing_assistance_renters": "hazard/bronze/fema/housing_assistance_renters"
+    },
+  
+    "nri": {
+      "counties": "hazard/bronze/nri/counties"
+    },
+  
+    "census": {
+      "acs5_2022_B01001": "hazard/bronze/census/acs5_2022_B01001",
+      "acs5_2022_B15003": "hazard/bronze/census/acs5_2022_B15003",
+      "acs5_2022_B23025": "hazard/bronze/census/acs5_2022_B23025",
+      "acs5_2022_B19013": "hazard/bronze/census/acs5_2022_B19013",
+      "acs5_2022_B25077": "hazard/bronze/census/acs5_2022_B25077"
+    },
+  
+    "audits": "hazard/bronze/_audits"
+  }
+  
