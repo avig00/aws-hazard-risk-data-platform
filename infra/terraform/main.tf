@@ -15,7 +15,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = "aws-hazard-risk-data-platform"
-      Phase       = "bronze"
+      Phase       = "platform"
       Environment = "dev"
       Owner       = "vigamogh"
       ManagedBy   = "terraform"

@@ -28,6 +28,7 @@ Transforms:
 
 Outputs:
 - silver.noaa_events_clean
+- silver.fema_disaster_declarations_clean
 - silver.fema_claims_clean
 - silver.nri_scores_clean
 - silver.census_clean
