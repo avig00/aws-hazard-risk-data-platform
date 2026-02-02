@@ -7,6 +7,7 @@
 #     - Glue databases (bronze/silver)
 #     - Glue job role + runtime sizing
 #     - Glue workflow naming
+#     - S3 lifecycle cleanup (Athena query results, Glue temp)
 
 variable "bucket_name" {
   type        = string
@@ -49,10 +50,11 @@ variable "assets_prefix" {
   default     = "hazard/glue-assets"
 }
 
+# IMPORTANT: end with "/" for lifecycle prefix matching
 variable "glue_temp_prefix" {
   type        = string
   description = "S3 prefix for Glue TempDir (Spark spills, bookmarks, etc.)"
-  default     = "hazard/glue-tmp"
+  default     = "hazard/glue-tmp/"
 }
 
 # -----------------------
@@ -104,4 +106,40 @@ variable "glue_workflow_name" {
   type        = string
   description = "Glue workflow name for Phase 3 Silver"
   default     = "silver-workflow"
+}
+
+# -----------------------
+# S3 Lifecycle Cleanup
+# -----------------------
+
+# This should match your Athena Workgroup output location prefix.
+# Common default is "athena-results/" but verify your workgroup setting.
+variable "athena_results_prefix" {
+  type        = string
+  description = "S3 prefix where Athena query results are written"
+  default     = "athena-results/"
+}
+
+variable "athena_results_prefix_hazard" {
+  type        = string
+  description = "Alternate/legacy Athena results prefix to expire (e.g., hazard/athena/results/)"
+  default     = "hazard/athena/results/"
+}
+
+variable "athena_results_expire_days" {
+  type        = number
+  description = "Days after which Athena query result objects expire"
+  default     = 14
+}
+
+variable "glue_temp_expire_days" {
+  type        = number
+  description = "Days after which Glue temp objects expire"
+  default     = 7
+}
+
+variable "abort_multipart_upload_days" {
+  type        = number
+  description = "Abort incomplete multipart uploads after N days (S3 hygiene)"
+  default     = 7
 }
