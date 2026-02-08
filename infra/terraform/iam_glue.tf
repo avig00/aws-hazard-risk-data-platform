@@ -1,4 +1,4 @@
-# iam.tf
+# iam_glue.tf
 #
 # Purpose:
 #   IAM role used by Glue Spark Jobs for Phase 3 (Silver).

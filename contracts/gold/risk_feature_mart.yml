@@ -1,0 +1,61 @@
+table: gold_hazard.risk_feature_mart
+s3_prefix: s3://aws-hazard-risk-vigamogh-dev/hazard/gold/risk_feature_mart/
+grain:
+  - county_fips
+  - year
+design_principle: "One row per county per year — no joins required downstream."
+columns:
+  county_fips: {type: string, required: true}
+  year: {type: int, required: true}
+
+  # NOAA (county-year; default 0)
+  noaa_event_count: {type: double, required: true, non_negative: true, default: 0}
+  noaa_total_fatalities: {type: double, required: true, non_negative: true, default: 0}
+  noaa_total_injuries: {type: double, required: true, non_negative: true, default: 0}
+  noaa_avg_property_damage: {type: double, required: true, non_negative: true, default: 0}
+
+  # FEMA claims + declarations (county-year; default 0)
+  fema_valid_registrations: {type: double, required: true, non_negative: true, default: 0}
+  fema_total_damage: {type: double, required: true, non_negative: true, default: 0}
+  fema_total_approved_ihp_amount: {type: double, required: true, non_negative: true, default: 0}
+  fema_declaration_count: {type: double, required: true, non_negative: true, default: 0}
+
+  # Optional FEMA decompositions (county-year; default 0) — if you include them in the mart
+  fema_repair_replace_amount: {type: double, required: false, non_negative: true, default: 0}
+  fema_rental_amount: {type: double, required: false, non_negative: true, default: 0}
+  fema_other_needs_amount: {type: double, required: false, non_negative: true, default: 0}
+  fema_total_inspected: {type: double, required: false, non_negative: true, default: 0}
+
+  # Census latest (static per county)
+  population_total: {type: bigint, required: false}
+  median_household_income: {type: bigint, required: false}
+  median_home_value: {type: bigint, required: false}
+  employment_universe_total: {type: bigint, required: false}
+  in_labor_force: {type: bigint, required: false}
+  unemployed: {type: bigint, required: false}
+  education_universe_total: {type: bigint, required: false}
+  high_school_grad: {type: bigint, required: false}
+  bachelors: {type: bigint, required: false}
+  graduate_degree: {type: bigint, required: false}
+  census_acs_year: {type: int, required: false}
+
+  # NRI (static per county; parsed from string)
+  nri_risk_score: {type: double, required: false}
+  nri_eal_score: {type: double, required: false}
+  nri_sovi_score: {type: double, required: false}
+  nri_resl_score: {type: double, required: false}
+
+null_tolerance:
+  # NOAA + FEMA should be fully populated due to scaffold + coalesce defaults
+  # Census/NRI may be missing for some counties depending on upstream coverage
+  census_any_null_pct_max: 5
+  nri_any_null_pct_max: 5
+
+checks:
+  - sql/quality/gold/07_risk_feature_mart_rowcount_equals_universe.sql
+  - sql/quality/gold/08_risk_feature_mart_uniqueness.sql
+  - sql/quality/gold/09_risk_feature_mart_nonnegative.sql
+  - sql/quality/gold/10_risk_feature_mart_coverage.sql
+  - sql/quality/gold/11_fema_claims_county_year_nonnegative.sql
+  - sql/quality/gold/12_fema_claims_join_coverage.sql
+  - sql/quality/gold/13_nri_parse_sanity.sql

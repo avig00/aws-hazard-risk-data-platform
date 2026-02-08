@@ -10,7 +10,7 @@
 #   - After validation, remove the legacy role resources from this file.
 
 # -----------------------------
-# Legacy crawler role (KEEP for now)
+# Legacy crawler role 
 # -----------------------------
 # These resource names match your current Terraform state (safe refactor).
 

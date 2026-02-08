@@ -1,0 +1,21 @@
+table: gold_hazard.hazard_event_summary
+s3_prefix: s3://aws-hazard-risk-vigamogh-dev/hazard/gold/hazard_event_summary/
+grain:
+  - county_fips
+  - year
+  - hazard_type
+notes:
+  - hazard_type = NOAA event_type
+  - hazard_category = COALESCE(category,'UNKNOWN')
+columns:
+  county_fips: {type: string, required: true}
+  year: {type: int, required: true}
+  hazard_type: {type: string, required: true}
+  hazard_category: {type: string, required: true}
+  event_count: {type: bigint, required: true, non_negative: true}
+  total_fatalities: {type: bigint, required: true, non_negative: true}
+  total_injuries: {type: bigint, required: true, non_negative: true}
+  avg_property_damage: {type: double, required: false, non_negative: true}
+checks:
+  - sql/quality/gold/05_hazard_event_summary_uniqueness.sql
+  - sql/quality/gold/06_hazard_event_summary_nonnegative.sql

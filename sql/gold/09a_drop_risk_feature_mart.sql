@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS gold_hazard.risk_feature_mart;

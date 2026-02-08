@@ -29,6 +29,12 @@ variable "silver_glue_database_name" {
   default     = "silver_hazard_cleaned"
 }
 
+variable "gold_glue_database_name" {
+  type        = string
+  description = "Glue database name for gold layer"
+  default     = "gold_hazard"
+}
+
 # -----------------------
 # S3 Prefixes (folder roots)
 # -----------------------
@@ -42,6 +48,12 @@ variable "silver_prefix" {
   type        = string
   description = "S3 prefix for silver layer root"
   default     = "hazard/silver"
+}
+
+variable "gold_prefix" {
+  type        = string
+  description = "S3 prefix for gold layer root"
+  default     = "hazard/gold"
 }
 
 variable "assets_prefix" {
