@@ -24,3 +24,9 @@ output "athena_gold_workgroup_name" {
 output "athena_gold_execution_role" {
   value = aws_iam_role.athena_gold_role.name
 }
+
+output "bucket_name" {
+  value = var.bucket_name
+}
+
+

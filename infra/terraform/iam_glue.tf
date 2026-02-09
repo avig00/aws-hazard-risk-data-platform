@@ -40,6 +40,21 @@ data "aws_iam_policy_document" "glue_job_s3" {
     resources = [
       "arn:aws:s3:::${var.bucket_name}"
     ]
+
+    # Recommended: restrict list access to only relevant prefixes
+    # IMPORTANT: use ${var.silver_prefix}* (not /*) to include the "silver_$folder$" marker
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values = [
+        "${var.bronze_prefix}/*",
+        "${var.silver_prefix}*",
+        "${var.gold_prefix}/*",
+        "${var.assets_prefix}/*",
+        "${var.glue_temp_prefix}*",
+        "${var.ops_prefix}/*"
+      ]
+    }
   }
 
   statement {
@@ -56,7 +71,12 @@ data "aws_iam_policy_document" "glue_job_s3" {
     effect  = "Allow"
     actions = ["s3:PutObject", "s3:DeleteObject", "s3:AbortMultipartUpload"]
     resources = [
-      "arn:aws:s3:::${var.bucket_name}/${var.silver_prefix}/*"
+      "arn:aws:s3:::${var.bucket_name}/${var.silver_prefix}/*",
+
+      # Glue/Hadoop sometimes writes the legacy folder marker object:
+      #   hazard/silver_$folder$
+      # Without this, you get AccessDenied 403 on PutObject to that key.
+      "arn:aws:s3:::${var.bucket_name}/${var.silver_prefix}_$folder$"
     ]
   }
 

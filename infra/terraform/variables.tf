@@ -3,11 +3,15 @@
 # Purpose:
 #   Central Terraform variables for the Hazard Risk data platform.
 #   This file defines:
-#     - S3 bucket + path prefixes (bronze/silver/assets/temp)
-#     - Glue databases (bronze/silver)
+#     - S3 bucket + path prefixes (bronze/silver/gold/assets/temp/ops)
+#     - Glue databases (bronze/silver/gold)
 #     - Glue job role + runtime sizing
-#     - Glue workflow naming
-#     - S3 lifecycle cleanup (Athena query results, Glue temp)
+#     - Athena results lifecycle cleanup (query outputs)
+#     - Glue temp lifecycle cleanup
+#
+# Notes:
+#   - MWAA has been removed, so no workflow/airflow variables remain.
+#   - Step Functions/Lambda orchestration reads bucket + ops prefix (and workgroup elsewhere if you define it).
 
 variable "bucket_name" {
   type        = string
@@ -33,6 +37,21 @@ variable "gold_glue_database_name" {
   type        = string
   description = "Glue database name for gold layer"
   default     = "gold_hazard"
+}
+
+# -----------------------
+# Glue Jobs
+# -----------------------
+variable "glue_bronze_jobs" {
+  type        = list(string)
+  description = "Glue job names for Bronze ingestion (PythonShell jobs)"
+  default     = []
+}
+
+variable "glue_silver_jobs" {
+  type        = list(string)
+  description = "Glue job names for Silver transforms (Spark jobs)"
+  default     = []
 }
 
 # -----------------------
@@ -67,6 +86,13 @@ variable "glue_temp_prefix" {
   type        = string
   description = "S3 prefix for Glue TempDir (Spark spills, bookmarks, etc.)"
   default     = "hazard/glue-tmp/"
+}
+
+# Ops artifacts written by Step Functions/Lambda agents (summaries, QA reports, run metadata)
+variable "ops_prefix" {
+  type        = string
+  description = "S3 prefix where orchestration ops artifacts are written (agent summaries, validation reports)"
+  default     = "hazard/ops"
 }
 
 # -----------------------
@@ -111,21 +137,24 @@ variable "glue_timeout_minutes" {
   default     = 60
 }
 
-# -----------------------
-# Glue Workflow
-# -----------------------
-variable "glue_workflow_name" {
+# ---------------------------
+# Athena Workbook and Results
+# ---------------------------
+variable "athena_workgroup" {
   type        = string
-  description = "Glue workflow name for Phase 3 Silver"
-  default     = "silver-workflow"
+  description = "Athena workgroup name used for Gold queries/validations"
+  default     = "athena-gold"
 }
+
+variable "athena_results_s3" {
+  type        = string
+  description = "Full S3 URI where Athena query results are written"
+}
+
 
 # -----------------------
 # S3 Lifecycle Cleanup
 # -----------------------
-
-# This should match your Athena Workgroup output location prefix.
-# Common default is "athena-results/" but verify your workgroup setting.
 variable "athena_results_prefix" {
   type        = string
   description = "S3 prefix where Athena query results are written"
