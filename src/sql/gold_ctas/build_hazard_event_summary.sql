@@ -9,10 +9,11 @@ WITH (
 ) AS
 SELECT
   county_fips,
-  year,
   hazard_type,
+  hazard_category,
   event_count,
   total_fatalities,
   total_injuries,
-  avg_property_damage
+  avg_property_damage,
+  year
 FROM hazard_event_summary_view;

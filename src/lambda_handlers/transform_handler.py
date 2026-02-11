@@ -71,7 +71,7 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
         catalog_result: Dict[str, Any] = {"crawlers": [], "tables_checked": []}
 
         for c in crawlers:
-            catalog_agent.start_crawler(ctx, c)
+            catalog_agent.start_crawler_if_needed(ctx, c)
             catalog_agent.wait_for_crawler(ctx, c)
             catalog_result["crawlers"].append(c)
 

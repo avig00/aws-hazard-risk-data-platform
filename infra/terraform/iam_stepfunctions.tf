@@ -48,16 +48,36 @@ resource "aws_iam_role_policy" "lambda_agents_policy" {
         ]
       },
 
-      # Glue Data Catalog reads (required by CatalogAgent.ensure_table_exists -> glue:GetTable)
+      # Glue Data Catalog reads (required by CatalogAgent.ensure_table_exists AND Athena partition discovery)
       {
         Effect = "Allow"
         Action = [
           "glue:GetTable",
           "glue:GetTables",
           "glue:GetDatabase",
-          "glue:GetDatabases"
+          "glue:GetDatabases",
+          "glue:GetPartition",
+          "glue:GetPartitions"
         ]
         Resource = "*"
+      },
+
+      # Glue Data Catalog writes (needed for Athena CREATE/REPLACE VIEW, which uses Glue CreateTable/UpdateTable)
+      {
+        Effect = "Allow"
+        Action = [
+          "glue:CreateTable",
+          "glue:UpdateTable",
+          "glue:DeleteTable"
+        ]
+        Resource = [
+          # Glue sometimes evaluates CreateTable against the catalog resource
+          "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:catalog",
+
+          # Scope writes to the Gold database + all tables (views are stored as tables in the catalog)
+          "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:database/${var.gold_glue_database_name}",
+          "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:table/${var.gold_glue_database_name}/*"
+        ]
       },
 
       # Start + poll Crawlers (CatalogAgent.start_crawler / wait_for_crawler)
@@ -92,7 +112,9 @@ resource "aws_iam_role_policy" "lambda_agents_policy" {
         Action = [
           "s3:GetObject",
           "s3:PutObject",
-          "s3:DeleteObject"
+          "s3:DeleteObject",
+          "s3:AbortMultipartUpload",
+          "s3:ListBucketMultipartUploads"
         ]
         Resource = [
           "arn:aws:s3:::${var.bucket_name}/${local.ops_prefix}*",
@@ -100,12 +122,17 @@ resource "aws_iam_role_policy" "lambda_agents_policy" {
           "arn:aws:s3:::${var.bucket_name}/hazard/silver/*",
           "arn:aws:s3:::${var.bucket_name}/hazard/gold/*",
           "arn:aws:s3:::${var.bucket_name}/hazard/code/*",
-          "arn:aws:s3:::${var.bucket_name}/hazard/athena/results/*"
+          "arn:aws:s3:::${var.bucket_name}/hazard/athena/results/*",
+          "arn:aws:s3:::${var.bucket_name}/athena-results/*"
         ]
       },
       {
         Effect = "Allow"
-        Action = ["s3:ListBucket"]
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation",
+          "s3:GetBucketAcl"
+        ]
         Resource = "arn:aws:s3:::${var.bucket_name}"
       }
     ]

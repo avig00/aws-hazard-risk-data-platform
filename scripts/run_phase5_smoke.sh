@@ -1,131 +1,3 @@
-# #!/usr/bin/env bash
-# set -euo pipefail
-# export AWS_PAGER=""
-
-# STATE_MACHINE_ARN="arn:aws:states:us-east-1:945919380353:stateMachine:hazard-risk-agent-controller"
-# RUN_ID="phase5-smoke-003"
-# MODE="manual"
-
-# EXEC_NAME="${RUN_ID}-$(date +%s)"
-# INPUT_JSON="{\"run_id\":\"${RUN_ID}\",\"mode\":\"${MODE}\"}"
-
-# echo ""
-# echo "Starting Step Functions execution..."
-# START_OUT="$(aws stepfunctions start-execution \
-#   --state-machine-arn "$STATE_MACHINE_ARN" \
-#   --name "$EXEC_NAME" \
-#   --input "$INPUT_JSON" \
-#   --output json 2>&1 || true)"
-
-# if ! echo "$START_OUT" | python3 -c 'import sys,json; json.load(sys.stdin)' >/dev/null 2>&1; then
-#   echo ""
-#   echo "[ERROR] start-execution did not return JSON. Raw output:"
-#   echo "$START_OUT"
-#   exit 1
-# fi
-
-# EXEC_ARN="$(echo "$START_OUT" | python3 -c 'import sys,json; print(json.load(sys.stdin)["executionArn"])')"
-
-# echo "Execution name : $EXEC_NAME"
-# echo "Execution ARN  : $EXEC_ARN"
-# echo ""
-
-# SLEEP_SECS=10
-
-# get_status() {
-#   aws stepfunctions describe-execution \
-#     --execution-arn "$EXEC_ARN" \
-#     --query 'status' \
-#     --output text 2>/dev/null || echo "UNKNOWN"
-# }
-
-# get_last_state() {
-#   aws stepfunctions get-execution-history \
-#     --execution-arn "$EXEC_ARN" \
-#     --reverse-order \
-#     --max-results 50 \
-#     --query 'events[?ends_with(type, `StateEntered`)]|[0].stateEnteredEventDetails.name' \
-#     --output text 2>/dev/null || echo "<history unavailable>"
-# }
-
-# get_failstate_input() {
-#   aws stepfunctions get-execution-history \
-#     --execution-arn "$EXEC_ARN" \
-#     --reverse-order \
-#     --max-results 200 \
-#     --query 'events[?type==`FailStateEntered`]|[0].stateEnteredEventDetails.input' \
-#     --output text 2>/dev/null || echo ""
-# }
-
-# get_last_taskfailed() {
-#   aws stepfunctions get-execution-history \
-#     --execution-arn "$EXEC_ARN" \
-#     --reverse-order \
-#     --max-results 200 \
-#     --query 'events[?type==`TaskFailed`]|[0].{state:stateName,error:taskFailedEventDetails.error,cause:taskFailedEventDetails.cause,time:timestamp}' \
-#     --output json 2>/dev/null || echo ""
-# }
-
-# get_last_lambdafailed() {
-#   aws stepfunctions get-execution-history \
-#     --execution-arn "$EXEC_ARN" \
-#     --reverse-order \
-#     --max-results 200 \
-#     --query 'events[?type==`LambdaFunctionFailed`]|[0].{error:lambdaFunctionFailedEventDetails.error,cause:lambdaFunctionFailedEventDetails.cause,time:timestamp}' \
-#     --output json 2>/dev/null || echo ""
-# }
-
-# while true; do
-#   STATUS="$(get_status)"
-#   TS="$(date +"%Y-%m-%d %H:%M:%S")"
-#   LAST_STATE="$(get_last_state)"
-
-#   if [[ "$LAST_STATE" == "None" || -z "$LAST_STATE" ]]; then
-#     LAST_STATE="<not yet available>"
-#   fi
-
-#   echo "[$TS] status=$STATUS  last_state=$LAST_STATE"
-
-#   case "$STATUS" in
-#     RUNNING)
-#       sleep "$SLEEP_SECS"
-#       ;;
-#     SUCCEEDED|FAILED|TIMED_OUT|ABORTED)
-#       echo ""
-#       echo "Execution finished with status: $STATUS"
-#       echo "Execution ARN: $EXEC_ARN"
-#       echo "Last state: $LAST_STATE"
-#       echo ""
-
-#       FS_INPUT="$(get_failstate_input)"
-#       if [[ -n "${FS_INPUT:-}" && "$FS_INPUT" != "None" ]]; then
-#         echo "FailStateEntered input (most useful):"
-#         echo "$FS_INPUT"
-#         echo ""
-#       fi
-
-#       LAST_TASKFAILED="$(get_last_taskfailed)"
-#       if [[ -n "${LAST_TASKFAILED:-}" && "$LAST_TASKFAILED" != "null" && "$LAST_TASKFAILED" != "None" ]]; then
-#         echo "Most recent TaskFailed (if any):"
-#         echo "$LAST_TASKFAILED"
-#         echo ""
-#       fi
-
-#       LAST_LAMBDAFAILED="$(get_last_lambdafailed)"
-#       if [[ -n "${LAST_LAMBDAFAILED:-}" && "$LAST_LAMBDAFAILED" != "null" && "$LAST_LAMBDAFAILED" != "None" ]]; then
-#         echo "Most recent LambdaFunctionFailed (if any):"
-#         echo "$LAST_LAMBDAFAILED"
-#         echo ""
-#       fi
-
-#       exit 0
-#       ;;
-#     *)
-#       sleep "$SLEEP_SECS"
-#       ;;
-#   esac
-# done
-
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -300,8 +172,22 @@ while true; do
   fi
 
   if [[ "$STATUS" == "FAILED" || "$STATUS" == "TIMED_OUT" || "$STATUS" == "ABORTED" ]]; then
-    FAIL_EVT="$(get_latest_failure_event)"
+    FAIL_EVT="$(get_latest_failure_event || true)"
     FAIL_PRETTY="$(echo "$FAIL_EVT" | pretty_failure || true)"
+
+    # Fallback: if your helper didn't find anything, query Step Functions history directly
+    if [[ -z "${FAIL_PRETTY//[[:space:]]/}" ]]; then
+      FAIL_PRETTY="$(
+        aws stepfunctions get-execution-history \
+          --execution-arn "$EXEC_ARN" \
+          --max-results 1000 \
+          --reverse-order \
+          --output json \
+          --query 'events[?type==`TaskFailed` || type==`LambdaFunctionFailed` || type==`ExecutionFailed` || type==`FailStateEntered`].[type, id, previousEventId, taskFailedEventDetails.error, taskFailedEventDetails.cause, lambdaFunctionFailedEventDetails.error, lambdaFunctionFailedEventDetails.cause, executionFailedEventDetails.error, executionFailedEventDetails.cause, stateEnteredEventDetails.name]' \
+        2>/dev/null
+      )"
+    fi
+
     echo ""
     echo "Execution finished with status: $STATUS"
     echo "Execution ARN: $EXEC_ARN"
@@ -309,8 +195,11 @@ while true; do
     echo ""
     echo "Most recent failure event:"
     echo "${FAIL_PRETTY:-<none>}"
-    exit 0
+
+    # IMPORTANT: failure should be a non-zero exit code
+    exit 1
   fi
+
 
   if [[ "$STATUS" == "SUCCEEDED" ]]; then
     echo ""

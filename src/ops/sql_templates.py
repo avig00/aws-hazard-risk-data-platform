@@ -14,10 +14,16 @@ def load_sql_file(path: str) -> str:
     Load a SQL file from disk.
     We keep comments and whitespace; Athena accepts them and they help auditing.
     """
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"SQL file not found: {p}")
-    return p.read_text(encoding="utf-8")
+    candidates = [Path(path)]
+
+    if path.startswith("src/"):
+        candidates.append(Path(path.removeprefix("src/")))
+
+    for p in candidates:
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+
+    raise FileNotFoundError(f"SQL file not found. Tried: {[str(c) for c in candidates]}")
 
 
 def render_sql(template_sql: str, vars: Dict[str, str], *, strict: bool = True) -> str:
