@@ -33,7 +33,7 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
 
         "quality": {
           "runs": [
-            {"layer": "bronze", "suite_name": "noaa_raw", "sql_dir": "sql/validations/bronze", "database": "bronze_hazard_raw"},
+            {"layer": "bronze", "suite_name": "noaa_details", "sql_dir": "sql/validations/bronze", "database": "bronze_hazard_raw"},
             {"layer": "silver", "suite_name": "noaa_clean", "sql_dir": "sql/validations/silver", "database": "silver_hazard_cleaned"},
             {"layer": "gold",  "suite_name": "gold_marts", "sql_dir": "sql/validations/gold", "database": "gold_hazard"}
           ]

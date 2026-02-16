@@ -7,15 +7,20 @@ Fixes included:
   - Some NOAA CSVs contain duplicate YEAR-like headers that normalize to the same name ("year"),
     which causes Spark "Reference 'year' is ambiguous".
   - We force unique column names right after normalize_columns() by renaming duplicates to <col>__dupN.
+  - Drop rows missing required grain keys (prevents downstream blocking quality failures), including
+    handling blank strings that should be treated as null.
+  - Use a hard filter for required keys (more reliable than dropna in the presence of odd CSV/schema edge cases).
 """
 
 import sys
+from functools import reduce
+
 from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 from awsglue.context import GlueContext
 from awsglue.job import Job
 
-from pyspark.sql.functions import col, to_timestamp, regexp_extract
+from pyspark.sql.functions import col, to_timestamp, regexp_extract, trim, when
 from pyspark.sql.types import IntegerType, DoubleType, StringType
 
 from silver_utils import (
@@ -27,6 +32,7 @@ from silver_utils import (
     null_rates,
     log_validation_summary,
 )
+
 
 def make_unique_columns(df):
     """
@@ -43,6 +49,7 @@ def make_unique_columns(df):
             seen[c] += 1
             new_cols.append(f"{c}__dup{seen[c]}")
     return df.toDF(*new_cols)
+
 
 args = getResolvedOptions(sys.argv, ["JOB_NAME", "S3_BUCKET", "BRONZE_PREFIX", "SILVER_PREFIX"])
 bucket = args["S3_BUCKET"]
@@ -107,6 +114,33 @@ elif "year_col" in df.columns:
     df = df.withColumn("year", regexp_extract(col("year_col").cast("string"), r"(\d{4})", 1).cast(StringType()))
 else:
     raise ValueError("Missing 'year'/'year_col' after normalization.")
+
+# Treat blank strings as null for key fields (common in CSVs)
+if "state" in df.columns:
+    df = df.withColumn("state", when(trim(col("state")) == "", None).otherwise(col("state")))
+
+if "state_fips" in df.columns:
+    df = df.withColumn(
+        "state_fips",
+        when(trim(col("state_fips").cast("string")) == "", None).otherwise(col("state_fips"))
+    )
+
+if "cz_fips" in df.columns:
+    df = df.withColumn(
+        "cz_fips",
+        when(trim(col("cz_fips").cast("string")) == "", None).otherwise(col("cz_fips"))
+    )
+
+if "event_type" in df.columns:
+    df = df.withColumn("event_type", when(trim(col("event_type")) == "", None).otherwise(col("event_type")))
+
+# Hard filter rows missing required grain keys (more reliable than dropna)
+required = ["event_id", "episode_id", "state", "state_fips", "cz_fips", "event_type", "year"]
+required = [c for c in required if c in df.columns]  # safety if schema evolves
+
+if required:
+    cond = reduce(lambda a, b: a & b, [(col(c).isNotNull()) for c in required])
+    df = df.filter(cond)
 
 # Derive county_fips when cz_type == 'C'
 df = make_county_fips_from_noaa_state_cz(df)

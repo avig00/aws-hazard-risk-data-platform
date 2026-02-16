@@ -10,14 +10,14 @@ WITH required_cols AS (
       ('event_type'),
       ('begin_date_time'),
       ('end_date_time'),
-      ('year_col')
+      ('year')
   ) AS t(col_name)
 ),
 present_cols AS (
   SELECT LOWER(column_name) AS col_name
   FROM information_schema.columns
-  WHERE table_schema = current_schema
-    AND table_name   = 'noaa_events_raw'
+  WHERE table_schema = 'bronze_hazard_raw'
+    AND table_name   = 'details'
 ),
 missing AS (
   SELECT r.col_name
