@@ -2,339 +2,337 @@
 
 ## Overview
 
-This project implements a **production-grade, serverless AWS data engineering platform** for multi-source **hazard, exposure, and risk analytics** using public U.S. datasets.
+Insurance carriers, catastrophe modelers, and climate risk teams rely on
+accurate, reproducible hazard and exposure data to make underwriting,
+pricing, and capital allocation decisions.
 
-It follows a strict **Bronze → Silver → Gold medallion architecture**, transforming raw public data into validated, analytics- and ML-ready tables suitable for catastrophe risk modeling, climate analytics, and insurance applications.
+Public hazard datasets (NOAA, FEMA, Census, National Risk Index) are
+fragmented, inconsistently structured, and not production-ready for
+analytics or modeling.
 
-The platform is fully deployed using **Terraform** and orchestrated via **AWS Step Functions + Lambda-based agents**.
+This project builds a **production-grade, serverless AWS data platform**
+that:
+
+-   Standardizes multi-source U.S. hazard data
+-   Enforces strict geographic grain integrity
+-   Applies deterministic transformations
+-   Validates data quality before promotion
+-   Produces ML-ready county-level risk feature marts
+
+The result is a reproducible, validation-gated hazard analytics
+foundation suitable for underwriting research, catastrophe risk
+analysis, and downstream ML modeling.
+
+Infrastructure is provisioned using **Terraform** and orchestrated via
+**AWS Step Functions** with Lambda-based operational agents.
+
+Athena Database: `gold_hazard`
 
 ---
 
-## Project Status
+# Data Sources & Geographic Standardization
 
-| Phase | Status |
-|-------|--------|
-| Phase 1 – Infrastructure (Terraform) | ✅ Complete |
-| Phase 2 – Bronze Ingestion | ✅ Complete |
-| Phase 3 – Silver Curation | ✅ Complete |
-| Phase 4 – Gold Analytics | ✅ Complete |
-| Phase 5 – Orchestration (Step Functions + Agents) | ✅ Complete & Smoke-Test Verified |
+This platform integrates multiple public datasets and standardizes them
+to a unified analytical grain:
 
-All layers are:
+- **Geographic key:** `county_fips`
+- **Time grain:** `year`
+- **Hazard segmentation:** `hazard_type` (where applicable)
 
-- Infrastructure-as-Code managed
-- Fully validated with blocking quality gates
-- Orchestrated end-to-end
-- Smoke-test verified via Step Functions execution
+All joins and transformations are explicitly aligned to this canonical
+county-year grain to prevent silent duplication or aggregation drift.
+
+## Core Datasets
+
+### NOAA Storm Events Database
+- Hazard events (tornado, flood, wildfire, wind, hail, lightning, etc.)
+- Fatalities, injuries, property damage
+- Event-level time-series data
+
+Used for:
+- Hazard aggregation
+- Event frequency metrics
+- Gold hazard summaries
+
+### FEMA Disaster Declarations + Housing Assistance
+- Disaster declaration metadata
+- Housing assistance registrants
+- Claim counts and assistance amounts
+
+Used for:
+- Disaster exposure metrics
+- Claim intensity modeling
+- County-year insurance impact analysis
+
+### National Risk Index (NRI)
+- Expected Annual Loss (EAL)
+- Social vulnerability
+- Community resilience
+- Hazard-specific risk scores
+
+Used for:
+- Risk benchmarking
+- ML feature engineering
+- Baseline comparison against modeled outputs
+
+### US Census ACS 5-Year Estimates
+- Population
+- Socioeconomic indicators
+- Housing characteristics
+- Demographic data
+
+Used for:
+- Feature enrichment
+- Exposure normalization
+- Socioeconomic risk segmentation
+
+### ZIP Code to County Mapping (Harvard Dataverse)
+
+Source: https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/0U2TCB  
+Persistent DOI: 10.7910/DVN/0U2TCB  
+
+Used for:
+- Mapping ZIP-level records to county FIPS
+- Standardizing geographic joins
+- Enforcing deterministic allocation logic
+- Supporting ZIP-weighted geographic allocation in Silver transformations
+
+All ZIP-level data is deterministically mapped to `county_fips`
+prior to aggregation into Gold.
 
 ---
 
-# Architecture Overview
+# System Architecture
 
-## Core AWS Services
+```mermaid
+flowchart LR
+    TF[Terraform IaC]
+    SF[Step Functions]
+    L[Lambda Agents]
+    S3[S3<br/>Bronze / Silver / Gold]
+    A[Athena]
+    BI[BI / ML / Agents]
 
-- Amazon S3 (Bronze / Silver / Gold storage)
-- AWS Glue (Spark ETL jobs)
-- Amazon Athena (CTAS builds + validation queries)
-- AWS Lambda (Operational agents)
-- AWS Step Functions (Orchestration)
-- Terraform (Infrastructure provisioning)
+    TF --> SF
+    SF --> L
+    L --> S3
+    S3 --> A
+    A --> BI
+```
+
+---
+
+# Gold Build & Promotion Flow
+
+```mermaid
+flowchart LR
+    B[GoldMartAgent<br/>Build Versioned CTAS]
+    V[QualityAgent<br/>Validation Suite]
+    P[Promote _current View]
+    F[FailState<br/>No Promotion]
+
+    B --> V
+    V -- Pass --> P
+    V -- Fail --> F
+```
+
+This guarantees:
+
+-   Safe deployments
+-   Instant rollback
+-   Stable BI contracts
+-   No broken downstream queries
+
+---
+
+# Storage Layout
+
+```text
+s3://<bucket>/
+  hazard/
+    bronze/
+    silver/
+    gold/
+      <mart>/run_dt=YYYY-MM-DD/
+    ops/
+```
+
+Gold tables are immutable and versioned.
 
 ---
 
 # Medallion Architecture
 
-## Bronze Layer (Raw)
+## Bronze Layer
 
-**Purpose:** Preserve source data exactly as received.
+-   Raw ingestion
+-   Immutable storage
+-   Minimal transformation
+-   Partitioned where applicable
+-   Basic rowcount + schema validation
 
-### Characteristics
+## Silver Layer
 
-- Stored in S3 under dataset-specific prefixes
-- Minimal transformation
-- Glue crawlers register schemas
-- Partitioned where applicable (e.g., NOAA by `year`)
-- Basic validation suites (rowcount, schema presence)
+-   snake_case normalization
+-   Explicit type casting
+-   Timestamp parsing
+-   Standardized `county_fips`
+-   ZIP-to-county deterministic mapping
+-   Deduplication on natural keys
+-   Partitioning by year
+-   Strict grain enforcement
+-   Null-grain filtering
 
-Bronze is treated as immutable raw data.
+All Silver tables enforce deterministic grain integrity before any Gold promotion.
 
----
+## Gold Layer
 
-## Silver Layer (Curated)
+Only data from **2010–2023** is allowed in Gold.  
+This window is enforced both in CTAS builds and validation gates.
 
-**Purpose:** Cleaned, standardized, analysis-ready datasets.
+Design principle:
 
-### Transformations
+> One row per county per year — no downstream joins required.
 
-- snake_case column normalization
-- Explicit type casting
-- Timestamp parsing
-- Standardized `county_fips`
-- Deduplication on natural keys
-- Partitioning (NOAA by `year`)
-- Strict grain enforcement
-- Blank-string → NULL normalization
-- Required grain-key filtering
+Gold marts include:
 
-### Silver Database
+-   `hazard_event_summary`
+-   `risk_feature_mart`
 
-- `silver_hazard_cleaned`
-
-
-### Silver Tables
-
-- `noaa_events_clean`
-- `fema_disaster_declarations_clean`
-- `fema_claims_clean`
-- `nri_scores_clean`
-- `census_clean`
-
-### NOAA Silver Data Integrity Fix
-
-A blocking validation failure revealed a single row with:
-
-- `state IS NULL`
-- `state_fips IS NULL`
-
-Permanent fixes implemented:
-
-- Explicit blank-string-to-null conversion
-- Strict required-grain-key filtering
-- Deterministic drop of null grain rows
-- Partition overwrite validation
-- Confirmed via Athena inspection and Step Functions smoke test
-
-Silver now enforces deterministic grain integrity.
+Both are fully ML-ready and analytically stable.
 
 ---
 
-## Gold Layer (Analytics / ML-Ready)
+# Versioned Physical Tables
 
-**Purpose:** Business-ready, ML-ready data marts.
+Each run creates:
 
-### Design Principles
+-   `hazard_event_summary__YYYYMMDD`
+-   `risk_feature_mart__YYYYMMDD`
 
-- Explicit grain definitions
-- Deterministic row counts
-- No downstream joins required
-- Blocking uniqueness validation
-- Scaffold-based completeness
-- CTAS swap-safe builds
+These are immutable historical builds.
 
 ---
 
-### Gold Table 1: `hazard_event_summary`
+# Stable Views
 
-**Grain:**
+After validation passes:
 
-- `county_fips + year + hazard_type`
+-   `gold_hazard.hazard_event_summary_current`
+-   `gold_hazard.risk_feature_mart_current`
 
+If validation fails:
 
-**Metrics:**
-
-- event_count
-- total_fatalities
-- total_injuries
-- avg_property_damage
+-   Promotion is skipped
+-   `_current` remains unchanged
 
 ---
 
-### Gold Table 2: `risk_feature_mart`
+# Sample Analytics Queries
 
-**Grain:**
+All queries use stable `_current` views.
 
-- `county_fips + year`
+## Top 10 Counties by Average Risk
 
+```sql
+SELECT county_fips,
+       AVG(nri_risk_score) AS avg_risk
+FROM gold_hazard.risk_feature_mart_current
+GROUP BY county_fips
+ORDER BY avg_risk DESC
+LIMIT 10;
+```
 
-**Inputs:**
+## FEMA Claim Intensity vs Hazard Frequency
 
-- NOAA hazard aggregates
-- FEMA declarations
-- FEMA claims
-- NRI risk scores
-- Census socioeconomic features
-
-**Design Rule:**
-
-> One row per county per year. No joins required downstream.
-
-Duplicate grain rows trigger blocking failures.
-
----
-
-# Orchestration — Step Functions + Agent Pattern
-
-The pipeline is orchestrated using:
-
-- `AWS Step Functions`
-
-
-State Machine:
-
-- `hazard-risk-agent-controller`
+```sql
+SELECT county_fips,
+       year,
+       fema_valid_registrations,
+       noaa_event_count,
+       ROUND(fema_valid_registrations / NULLIF(noaa_event_count,0), 0) AS claims_per_event
+FROM gold_hazard.risk_feature_mart_current
+WHERE year BETWEEN 2015 AND 2023
+ORDER BY claims_per_event DESC
+LIMIT 25;
+```
 
 ---
 
-## Execution Flow
+# Real-World Use Case
 
-- `IngestionAgent`
-↓
-- `CatalogAgent`
-↓
-- `TransformAgent`
-↓
-- `GoldMartAgent`
-↓
-- `QualityAgent`
-↓
-- `SuccessState`
+## County-Level Underwriting Research
 
+A regional property insurer wants to evaluate whether certain counties
+show disproportionate FEMA claim intensity relative to hazard frequency.
 
-Any blocking failure routes execution to:
+Using the Gold data marts:
 
-- `FailState`
+1.  Analysts examine NOAA hazard event counts.
+2.  They compare FEMA valid registrations and total damage.
+3.  They calculate **claims-per-event ratios** to identify counties with
+    unusually high insurance impact relative to hazard frequency.
+4.  Counties with elevated ratios are flagged for underwriting review or
+    pricing adjustment.
 
+Because the Gold layer enforces:
 
-Each state invokes a dedicated Lambda-based operational agent.
+-   Strict county-year grain integrity
+-   Hard 2010–2023 year window
+-   Blocking validation gates
+-   Immutable versioned builds
 
----
-
-# Agent Responsibilities
-
-## BronzeIngestionAgent (Bronze)
-
-- Source readiness checks
-- Builds ingestion plan artifact
-- Triggers Bronze Glue jobs
-- Runs Bronze validation suite
-- Syncs Glue Catalog
-- Records metadata
+Analysts can trust that results are reproducible and not silently
+corrupted by data drift or inconsistent joins.
 
 ---
 
-## TransformAgent (Silver)
+# Data Quality
 
-- Builds transform plan
-- Triggers Silver Glue jobs
-- Enforces schema contracts
-- Applies grain rules
-- Executes Silver validation suite
-- Records run metadata
+Blocking validations include:
 
----
+-   Grain uniqueness enforcement
+-   Non-negative metric checks
+-   Year window enforcement (2010–2023)
+-   County-year coverage validation
+-   Deterministic ZIP-to-county mapping validation
 
-## GoldMartAgent (Gold)
+Validation failures:
 
-- Builds mart plan
-- Executes Athena CTAS builds
-- Enforces strict grain uniqueness
-- Publishes Gold health artifacts
-
----
-
-## QualityAgent (Cross-layer)
-
-- Executes validation SQL suites
-- Produces structured quality reports
-- Determines:
-  - pass / warn / fail
-  - block_downstream decision
-- Raises `RuntimeError` on blocking failures
-
-All validation failures immediately halt the state machine.
-
-Quality artifacts are stored in:
-
-- `s3://<bucket>/hazard/ops/run_id=<run_id>/quality/`
-
-
----
-
-## CatalogAgent (Cross-layer)
-
-- Starts Glue crawlers when required
-- Waits for completion
-- Verifies Glue tables exist
-- Confirms partitions are registered
-
----
-
-# Validation Framework
-
-Each validation query must return:
-
-- `0 failure rows`
-
-Validation categories include:
-
-- Grain uniqueness
-- Null grain keys
-- Year partition completeness
-- Non-negative metric checks
-- Rowcount consistency
-- Join coverage thresholds
-
-Blocking failures set:
-
-- `block_downstream = true`
-
-
-And trigger pipeline termination.
-
----
-
-# Smoke Test (Phase 5 Validation)
-
-Script:
-
-- `scripts/run_phase5_smoke.sh`
-
-**Purpose:**
-
-- Validate full Bronze → Silver → Gold pipeline
-- Confirm Glue job wiring
-- Confirm Lambda deployment
-- Confirm Athena permissions
-- Confirm validation gating
-- Confirm Step Functions state transitions
-
-**Latest execution result:**
-
-- `Execution finished with status: SUCCEEDED`
-- `Last state: SuccessState`
-
-This confirms:
-
-- Deterministic orchestration
-- Cross-layer validation integrity
-- Proper failure gating
-- Correct agent wiring
-- Stable Silver grain enforcement
-- Gold mart uniqueness guarantees
+-   Prevent Gold promotion
+-   Preserve previous `_current` view
+-   Guarantee downstream stability
 
 ---
 
 # Design Principles
 
-- Explicit grains over implicit joins
-- Deterministic CTAS builds
-- Hard failure over silent corruption
-- Validation as a first-class citizen
-- Idempotent ETL jobs
-- Agent-based orchestration
-- Fully reproducible infrastructure
+-   Explicit grains over implicit joins
+-   Deterministic builds
+-   Hard failure over silent corruption
+-   Validation-first engineering
+-   Idempotent ETL
+-   Agent-based orchestration
+-   Cost-aware architecture
+-   Stable downstream contracts via `_current` views
 
 ---
 
-# Future Extensions
+# Summary
 
-This platform now serves as a foundation for:
+This repository implements a production-style AWS data platform
+featuring:
 
-- ML model training pipelines
-- Feature store integration
-- Risk scoring APIs
-- Text-to-SQL analytical agents
-- Interactive dashboards
-- Agentic AI analytics systems
+-   Infrastructure-as-Code (Terraform)
+-   Serverless orchestration (Step Functions + Lambda)
+-   Medallion architecture
+-   ZIP-weighted geographic allocation
+-   Blocking quality gates
+-   Versioned Gold builds
+-   Validation-gated promotion
+-   Deterministic, reproducible pipelines
+-   Cost-aware Athena design
+-   ML-ready analytics marts
 
-The Gold layer is fully ready for downstream ML and AI workloads.
+The system is engineered for reliability, auditability, and safe
+iteration - not just data movement.

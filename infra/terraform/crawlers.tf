@@ -1,3 +1,4 @@
+########################################
 # crawlers.tf
 #
 # Purpose:
@@ -120,6 +121,23 @@ resource "aws_glue_crawler" "nri_counties" {
   database_name = aws_glue_catalog_database.bronze.name
 
   s3_target { path = "${local.bronze_base}/nri/counties/" }
+
+  schema_change_policy {
+    update_behavior = "UPDATE_IN_DATABASE"
+    delete_behavior = "LOG"
+  }
+
+  recrawl_policy { recrawl_behavior = "CRAWL_EVERYTHING" }
+}
+
+# Reference (1) - ZIP to County crosswalk (2010-2023)
+# Creates: bronze_hazard_raw.zip2county_master_xwalk
+resource "aws_glue_crawler" "zip2county_master_xwalk" {
+  name          = "bronze-zip2county-master-xwalk"
+  role          = aws_iam_role.glue_crawler_role_v2.arn
+  database_name = aws_glue_catalog_database.bronze.name
+
+  s3_target { path = "${local.bronze_base}/reference/zip2county_master_xwalk/" }
 
   schema_change_policy {
     update_behavior = "UPDATE_IN_DATABASE"
@@ -275,6 +293,23 @@ resource "aws_glue_crawler" "silver_census_clean" {
   database_name = aws_glue_catalog_database.silver.name
 
   s3_target { path = "${local.silver_base}/census_clean/" }
+
+  schema_change_policy {
+    update_behavior = "UPDATE_IN_DATABASE"
+    delete_behavior = "LOG"
+  }
+
+  recrawl_policy { recrawl_behavior = "CRAWL_EVERYTHING" }
+}
+
+# Silver Reference (1) - ZIP to County crosswalk (cleaned Parquet output)
+# Creates: silver_hazard_cleaned.zip2county_xwalk_clean (expected)
+resource "aws_glue_crawler" "silver_zip2county_xwalk_clean" {
+  name          = "silver-zip2county-xwalk-clean"
+  role          = aws_iam_role.glue_crawler_role_v2.arn
+  database_name = aws_glue_catalog_database.silver.name
+
+  s3_target { path = "${local.silver_base}/zip2county_xwalk_clean/" }
 
   schema_change_policy {
     update_behavior = "UPDATE_IN_DATABASE"

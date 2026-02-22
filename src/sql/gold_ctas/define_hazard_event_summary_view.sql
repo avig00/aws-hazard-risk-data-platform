@@ -1,5 +1,6 @@
 -- hazard_event_summary_view
 -- Defines the mart logic from Silver (noaa_events_clean)
+-- Year window enforced: 2010–2023
 
 CREATE OR REPLACE VIEW hazard_event_summary_view AS
 WITH base AS (
@@ -24,8 +25,9 @@ WITH base AS (
       ELSE 0.0
     END AS property_damage_usd
   FROM silver_hazard_cleaned.noaa_events_clean
-  WHERE county_fips IS NOT NULL AND LENGTH(county_fips) = 5
+  WHERE county_fips IS NOT NULL AND LENGTH(TRIM(county_fips)) = 5
     AND year IS NOT NULL
+    AND CAST(year AS BIGINT) BETWEEN 2010 AND 2023
 )
 SELECT
   county_fips,

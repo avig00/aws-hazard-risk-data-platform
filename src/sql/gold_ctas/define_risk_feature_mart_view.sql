@@ -1,5 +1,6 @@
 -- risk_feature_mart_view
 -- One row per county_fips per year, no downstream joins needed.
+-- Year window enforced: 2010–2023
 
 CREATE OR REPLACE VIEW risk_feature_mart_view AS
 WITH
@@ -31,25 +32,71 @@ noaa_county_year AS (
   GROUP BY 1, 2
 ),
 
--- FEMA claims mapped to county via declarations, using fydeclared as year
+-- FEMA claims mapped to county via ZIP crosswalk, using fydeclared as year (2010–2023)
 fema_claims_county_year AS (
+  WITH decl AS (
+    -- Disaster/year universe, deduped
+    SELECT DISTINCT
+      disasternumber,
+      TRIM(state) AS state,
+      CAST(fydeclared AS BIGINT) AS year
+    FROM silver_hazard_cleaned.fema_disaster_declarations_clean
+    WHERE disasternumber IS NOT NULL
+      AND state IS NOT NULL AND TRIM(state) <> ''
+      AND fydeclared IS NOT NULL
+      AND CAST(fydeclared AS BIGINT) BETWEEN 2010 AND 2023
+  ),
+  claims AS (
+    -- Normalize zipcode to 5-char string (keeps leading zeros)
+    -- NOTE: Use regex extraction to safely handle cases where zipcode is not strictly 5 digits.
+    SELECT
+      disasternumber,
+      TRIM(state) AS state,
+      LPAD(REGEXP_EXTRACT(TRIM(CAST(zipcode AS VARCHAR)), '([0-9]{5})', 1), 5, '0') AS zip5,
+      CAST(COALESCE(validregistrations, 0) AS DOUBLE) AS validregistrations,
+      CAST(COALESCE(totaldamage, 0.0) AS DOUBLE) AS totaldamage,
+      CAST(COALESCE(totalapprovedihpamount, 0.0) AS DOUBLE) AS totalapprovedihpamount,
+      CAST(COALESCE(repairreplaceamount, 0.0) AS DOUBLE) AS repairreplaceamount,
+      CAST(COALESCE(rentalamount, 0.0) AS DOUBLE) AS rentalamount,
+      CAST(COALESCE(otherneedsamount, 0.0) AS DOUBLE) AS otherneedsamount,
+      CAST(COALESCE(totalinspected, 0) AS DOUBLE) AS totalinspected
+    FROM silver_hazard_cleaned.fema_claims_clean
+    WHERE disasternumber IS NOT NULL
+      AND state IS NOT NULL AND TRIM(state) <> ''
+      AND zipcode IS NOT NULL
+  ),
+  xwalk AS (
+    SELECT
+      TRIM(zip5) AS zip5,
+      TRIM(county_fips) AS county_fips,
+      CAST(year AS BIGINT) AS year,
+      CAST(tot_ratio AS DOUBLE) AS tot_ratio
+    FROM silver_hazard_cleaned.zip2county_xwalk_clean
+    WHERE year BETWEEN '2010' AND '2023'
+      AND county_fips IS NOT NULL AND LENGTH(TRIM(county_fips)) = 5
+      -- Basic FIPS sanity (avoid placeholder/invalid)
+      AND substr(TRIM(county_fips), 1, 2) NOT IN ('00', '03')
+      AND substr(TRIM(county_fips), 3, 3) <> '000'
+  )
   SELECT
-    TRIM(d.county_fips) AS county_fips,
-    CAST(d.fydeclared AS BIGINT) AS year,
-    CAST(SUM(COALESCE(c.validregistrations, 0)) AS DOUBLE) AS fema_valid_registrations,
-    CAST(SUM(COALESCE(c.totaldamage, 0.0)) AS DOUBLE) AS fema_total_damage,
-    CAST(SUM(COALESCE(c.totalapprovedihpamount, 0.0)) AS DOUBLE) AS fema_total_approved_ihp_amount,
+    x.county_fips,
+    d.year,
+    SUM(COALESCE(c.validregistrations, 0.0) * COALESCE(x.tot_ratio, 1.0)) AS fema_valid_registrations,
+    SUM(COALESCE(c.totaldamage, 0.0) * COALESCE(x.tot_ratio, 1.0)) AS fema_total_damage,
+    SUM(COALESCE(c.totalapprovedihpamount, 0.0) * COALESCE(x.tot_ratio, 1.0)) AS fema_total_approved_ihp_amount,
     COUNT(DISTINCT d.disasternumber) AS fema_declaration_count,
-    CAST(SUM(COALESCE(c.repairreplaceamount, 0.0)) AS DOUBLE) AS fema_repair_replace_amount,
-    CAST(SUM(COALESCE(c.rentalamount, 0.0)) AS DOUBLE) AS fema_rental_amount,
-    CAST(SUM(COALESCE(c.otherneedsamount, 0.0)) AS DOUBLE) AS fema_other_needs_amount,
-    CAST(SUM(COALESCE(c.totalinspected, 0)) AS DOUBLE) AS fema_total_inspected
-  FROM silver_hazard_cleaned.fema_claims_clean c
-  JOIN silver_hazard_cleaned.fema_disaster_declarations_clean d
+    SUM(COALESCE(c.repairreplaceamount, 0.0) * COALESCE(x.tot_ratio, 1.0)) AS fema_repair_replace_amount,
+    SUM(COALESCE(c.rentalamount, 0.0) * COALESCE(x.tot_ratio, 1.0)) AS fema_rental_amount,
+    SUM(COALESCE(c.otherneedsamount, 0.0) * COALESCE(x.tot_ratio, 1.0)) AS fema_other_needs_amount,
+    SUM(COALESCE(c.totalinspected, 0.0) * COALESCE(x.tot_ratio, 1.0)) AS fema_total_inspected
+  FROM claims c
+  JOIN decl d
     ON c.disasternumber = d.disasternumber
    AND c.state = d.state
-  WHERE d.county_fips IS NOT NULL AND LENGTH(TRIM(d.county_fips)) = 5
-    AND d.fydeclared IS NOT NULL
+  JOIN xwalk x
+    ON c.zip5 = x.zip5
+   AND d.year = x.year
+  WHERE d.year BETWEEN 2010 AND 2023
   GROUP BY 1, 2
 ),
 
@@ -91,11 +138,17 @@ census_latest AS (
   WHERE rn = 1
 ),
 
--- Universe: include any county-year seen in NOAA or FEMA
+-- Universe: include any county-year seen in NOAA or FEMA, limited to 2010–2023
 universe AS (
-  SELECT county_fips, year FROM noaa_county_year
+  SELECT county_fips, year
+  FROM noaa_county_year
+  WHERE year BETWEEN 2010 AND 2023
+
   UNION
-  SELECT county_fips, year FROM fema_claims_county_year
+
+  SELECT county_fips, year
+  FROM fema_claims_county_year
+  WHERE year BETWEEN 2010 AND 2023
 )
 
 SELECT

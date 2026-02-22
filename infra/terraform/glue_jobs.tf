@@ -20,9 +20,15 @@ locals {
     "--enable-metrics"                   = "true"
     "--TempDir"                          = local.temp_dir
 
+    # Standard arg names used by Phase 3 Silver jobs
     "--S3_BUCKET"     = var.bucket_name
     "--BRONZE_PREFIX" = var.bronze_prefix
     "--SILVER_PREFIX" = var.silver_prefix
+
+    # Also pass legacy/agentic arg names required by some Silver scripts (incl. zip2county)
+    "--PLATFORM_S3_BUCKET" = var.bucket_name
+    "--OPS_PREFIX"         = var.ops_prefix
+    "--RUN_DT"             = "manual"
 
     "--extra-py-files" = local.extra_py_files
   }
@@ -113,6 +119,27 @@ resource "aws_glue_job" "silver_census_clean" {
     name            = "glueetl"
     python_version  = "3"
     script_location = "${local.assets_base}/jobs/silver/05_census_clean.py"
+  }
+
+  default_arguments = local.common_args
+}
+
+# ZIP -> County crosswalk clean (Bronze -> Silver reference dataset)
+# Script uploaded to:
+#   s3://<bucket>/<assets_prefix>/jobs/silver/06_silver_zip2county_clean.py
+resource "aws_glue_job" "silver_zip2county_clean" {
+  name     = "silver_zip2county_clean"
+  role_arn = aws_iam_role.glue_job_role.arn
+
+  glue_version      = var.glue_version
+  worker_type       = var.glue_worker_type
+  number_of_workers = var.glue_workers_default
+  timeout           = var.glue_timeout_minutes
+
+  command {
+    name            = "glueetl"
+    python_version  = "3"
+    script_location = "${local.assets_base}/jobs/silver/06_silver_zip2county_clean.py"
   }
 
   default_arguments = local.common_args

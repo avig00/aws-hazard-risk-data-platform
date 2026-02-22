@@ -31,7 +31,7 @@ def bronze_noaa_task(**context):
     ing.trigger_bronze_job(ctx, glue_job_name=job, args={})
 
     qa = QualityAgent()
-    suite = load_suite("src/sql/validations/bronze")  # can split per dataset if desired
+    suite = load_suite("src/sql/validations/bronze")  
     # Optionally filter suite to NOAA-only by naming convention
     qa.validate(ctx, database=ATHENA_DB_BRONZE, suite_name="bronze_noaa", validations={
         k:v for k,v in suite.items() if k.startswith("noaa_events_raw")

@@ -1,3 +1,4 @@
+########################################
 # iam_crawlers.tf
 #
 # Purpose:
@@ -10,7 +11,7 @@
 #   - After validation, remove the legacy role resources from this file.
 
 # -----------------------------
-# Legacy crawler role 
+# Legacy crawler role
 # -----------------------------
 # These resource names match your current Terraform state (safe refactor).
 
@@ -40,7 +41,6 @@ resource "aws_iam_role_policy_attachment" "s3_read" {
 # -----------------------------
 # New crawler role (v2) — clearer name, used for BOTH bronze + silver crawlers
 # -----------------------------
-
 resource "aws_iam_role" "glue_crawler_role_v2" {
   name = "glue-crawler-hazard"
 

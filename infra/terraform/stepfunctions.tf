@@ -16,9 +16,9 @@ resource "aws_sfn_state_machine" "hazard_agent_controller" {
 
         # Keep only what you care about from the invoke response (optional but recommended)
         ResultSelector = {
-          "payload.$"     = "$.Payload"
-          "statusCode.$"  = "$.StatusCode"
-          "requestId.$"   = "$.SdkResponseMetadata.RequestId"
+          "payload.$"    = "$.Payload"
+          "statusCode.$" = "$.StatusCode"
+          "requestId.$"  = "$.SdkResponseMetadata.RequestId"
         }
         ResultPath = "$.ingestion_result"
 
@@ -45,9 +45,9 @@ resource "aws_sfn_state_machine" "hazard_agent_controller" {
         }
 
         ResultSelector = {
-          "payload.$"     = "$.Payload"
-          "statusCode.$"  = "$.StatusCode"
-          "requestId.$"   = "$.SdkResponseMetadata.RequestId"
+          "payload.$"    = "$.Payload"
+          "statusCode.$" = "$.StatusCode"
+          "requestId.$"  = "$.SdkResponseMetadata.RequestId"
         }
         ResultPath = "$.catalog_result"
 
@@ -74,9 +74,9 @@ resource "aws_sfn_state_machine" "hazard_agent_controller" {
         }
 
         ResultSelector = {
-          "payload.$"     = "$.Payload"
-          "statusCode.$"  = "$.StatusCode"
-          "requestId.$"   = "$.SdkResponseMetadata.RequestId"
+          "payload.$"    = "$.Payload"
+          "statusCode.$" = "$.StatusCode"
+          "requestId.$"  = "$.SdkResponseMetadata.RequestId"
         }
         ResultPath = "$.transform_result"
 
@@ -103,9 +103,9 @@ resource "aws_sfn_state_machine" "hazard_agent_controller" {
         }
 
         ResultSelector = {
-          "payload.$"     = "$.Payload"
-          "statusCode.$"  = "$.StatusCode"
-          "requestId.$"   = "$.SdkResponseMetadata.RequestId"
+          "payload.$"    = "$.Payload"
+          "statusCode.$" = "$.StatusCode"
+          "requestId.$"  = "$.SdkResponseMetadata.RequestId"
         }
         ResultPath = "$.gold_result"
 
@@ -132,9 +132,9 @@ resource "aws_sfn_state_machine" "hazard_agent_controller" {
         }
 
         ResultSelector = {
-          "payload.$"     = "$.Payload"
-          "statusCode.$"  = "$.StatusCode"
-          "requestId.$"   = "$.SdkResponseMetadata.RequestId"
+          "payload.$"    = "$.Payload"
+          "statusCode.$" = "$.StatusCode"
+          "requestId.$"  = "$.SdkResponseMetadata.RequestId"
         }
         ResultPath = "$.quality_result"
 

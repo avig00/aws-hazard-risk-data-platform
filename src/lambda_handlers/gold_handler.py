@@ -76,6 +76,8 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
         "bucket": PLATFORM_S3_BUCKET,
         "run_ds": run_dt,
         "run_ds_nodash": run_dt.replace("-", ""),
+        # Ensures CREATE/REPLACE VIEW is created in the intended Athena DB (e.g., gold_hazard)
+        "athena_db_gold": gold_db,
     }
 
     sql_paths = {
@@ -119,7 +121,11 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
         # If that prefix already exists, Athena fails with HIVE_PATH_ALREADY_EXISTS.
         gold_prefix = f"hazard/gold/{mart}/run_dt={run_dt}/"
         deleted = _delete_s3_prefix(PLATFORM_S3_BUCKET, gold_prefix)
-        gold_agent.log(ctx, "gold_ctas_prefix_cleared", {"mart": mart, "s3_prefix": gold_prefix, "deleted_objects": deleted})
+        gold_agent.log(
+            ctx,
+            "gold_ctas_prefix_cleared",
+            {"mart": mart, "s3_prefix": gold_prefix, "deleted_objects": deleted},
+        )
         # --- end idempotency block ---
 
         build_tpl = load_sql_file(sql_paths[mart]["build"])
@@ -128,22 +134,32 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
         build_res = gold_agent.run_query(ctx, database=gold_db, sql=build_sql, name=f"build_{mart}")
         builds.append(build_res)
 
-        view_tpl = load_sql_file(sql_paths[mart]["update_view"])
-        view_sql = render_sql(view_tpl, tmpl_vars, strict=True)
-
-        view_res = gold_agent.run_query(ctx, database=gold_db, sql=view_sql, name=f"update_{mart}_current_view")
-        builds.append(view_res)
-
+        # Validate BEFORE promoting the *_current view
         checks = ((event.get("gold_validation_checks") or {}).get(mart)) or {}
         suite_name = f"validate_{mart}"
         q = quality_agent.validate(ctx, database=gold_db, suite_name=suite_name, checks=checks)
+
+        # Promote only if not blocking
+        view_res = None
+        if q.get("block_downstream"):
+            gold_agent.log(
+                ctx,
+                "gold_promotion_skipped_blocking",
+                {"mart": mart, "quality_status": q.get("status"), "quality_report_uri": q.get("report_uri")},
+            )
+        else:
+            view_tpl = load_sql_file(sql_paths[mart]["update_view"])
+            view_sql = render_sql(view_tpl, tmpl_vars, strict=True)
+
+            view_res = gold_agent.run_query(ctx, database=gold_db, sql=view_sql, name=f"promote_{mart}_current_view")
+            builds.append(view_res)
 
         mart_reports.append(
             {
                 "mart": mart,
                 "define_view_query_execution_id": define_res.get("query_execution_id"),
                 "build_query_execution_id": build_res.get("query_execution_id"),
-                "view_update_query_execution_id": view_res.get("query_execution_id"),
+                "view_update_query_execution_id": (view_res.get("query_execution_id") if view_res else None),
                 "quality_status": q.get("status"),
                 "block_downstream": q.get("block_downstream"),
                 "quality_report_uri": q.get("report_uri"),
