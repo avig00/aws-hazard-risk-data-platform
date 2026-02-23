@@ -4,55 +4,81 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 
+import altair as alt
 import boto3
 import pandas as pd
-import streamlit as st
-import altair as alt
 import pydeck as pdk
+import streamlit as st
 
 # Load local .env for development (Streamlit Community Cloud ignores this unless a .env exists)
 load_dotenv()
 
-# -----------------------------
+# =============================================================================
 # Config
-# -----------------------------
+# =============================================================================
 @dataclass(frozen=True)
 class AppConfig:
     region: str
     workgroup: str
     database: str
-    output_s3: str  # e.g. s3://<bucket>/hazard/athena/results/
+    output_s3: str  # must be trailing slash
     max_rows: int
+    map_default_top_n: int
+    map_max_points_cap: int
+
+
+def _get_env(name: str, default: Optional[str] = None) -> Optional[str]:
+    v = os.getenv(name)
+    return v if v not in (None, "") else default
+
+
+def _normalize_s3_uri(uri: str) -> str:
+    uri = (uri or "").strip()
+    if not uri:
+        return ""
+    if not uri.startswith("s3://"):
+        return uri
+    return uri if uri.endswith("/") else uri + "/"
 
 
 def get_cfg() -> AppConfig:
-    region = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
-    workgroup = os.getenv("ATHENA_WORKGROUP", "athena-gold")
-    database = os.getenv("ATHENA_DB_GOLD", "gold_hazard")
-    output_s3 = os.getenv("ATHENA_RESULTS_S3", "")
+    region = _get_env("AWS_REGION", _get_env("AWS_DEFAULT_REGION", "us-east-1")) or "us-east-1"
+    workgroup = _get_env("ATHENA_WORKGROUP", "athena-gold") or "athena-gold"
+    database = _get_env("ATHENA_DB_GOLD", "gold_hazard") or "gold_hazard"
+
+    # Prefer explicit ATHENA_RESULTS_S3, otherwise try to derive from WorkGroup OutputLocation.
+    output_s3 = _normalize_s3_uri(_get_env("ATHENA_RESULTS_S3", ""))
 
     if not output_s3.startswith("s3://"):
-        raise ValueError(
-            "Missing/invalid ATHENA_RESULTS_S3 env var. "
-            "Set it to something like: s3://<bucket>/hazard/athena/results/"
-        )
+        try:
+            client = boto3.client("athena", region_name=region)
+            wg = client.get_work_group(WorkGroup=workgroup)["WorkGroup"]
+            wg_out = wg.get("Configuration", {}).get("ResultConfiguration", {}).get("OutputLocation", "")
+            wg_out = _normalize_s3_uri(wg_out)
+            if wg_out.startswith("s3://"):
+                output_s3 = wg_out
+        except Exception:
+            # We'll surface a friendly error in the UI if still missing.
+            pass
 
     return AppConfig(
         region=region,
         workgroup=workgroup,
         database=database,
         output_s3=output_s3,
-        max_rows=int(os.getenv("RISK_EXPLORER_MAX_ROWS", "2000")),
+        max_rows=int(_get_env("RISK_EXPLORER_MAX_ROWS", "2000") or "2000"),
+        map_default_top_n=int(_get_env("RISK_EXPLORER_MAP_TOP_N", "600") or "600"),
+        map_max_points_cap=int(_get_env("RISK_EXPLORER_MAP_MAX_POINTS_CAP", "1500") or "1500"),
     )
 
 
-# -----------------------------
+# =============================================================================
 # Athena helpers (boto3)
-# -----------------------------
+# =============================================================================
 def athena_client(region: str):
     return boto3.client("athena", region_name=region)
 
@@ -65,7 +91,7 @@ def run_athena_query(
     workgroup: str,
     output_s3: str,
     poll_seconds: float = 1.0,
-    timeout_seconds: int = 90,
+    timeout_seconds: int = 120,
 ) -> str:
     resp = client.start_query_execution(
         QueryString=sql,
@@ -76,9 +102,11 @@ def run_athena_query(
     qid = resp["QueryExecutionId"]
 
     start = time.time()
+    state = "RUNNING"
+    status_obj: Dict = {}
     while True:
-        s = client.get_query_execution(QueryExecutionId=qid)["QueryExecution"]["Status"]
-        state = s["State"]
+        status_obj = client.get_query_execution(QueryExecutionId=qid)["QueryExecution"]["Status"]
+        state = status_obj["State"]
         if state in ("SUCCEEDED", "FAILED", "CANCELLED"):
             break
         if time.time() - start > timeout_seconds:
@@ -87,7 +115,7 @@ def run_athena_query(
         time.sleep(poll_seconds)
 
     if state != "SUCCEEDED":
-        reason = s.get("StateChangeReason", "Unknown")
+        reason = status_obj.get("StateChangeReason", "Unknown")
         raise RuntimeError(f"Athena query failed: state={state} reason={reason}\nSQL:\n{sql}")
 
     return qid
@@ -107,23 +135,30 @@ def get_query_stats(client, qid: str) -> Tuple[int, int]:
 def fetch_athena_results(client, qid: str, max_rows: int = 2000) -> pd.DataFrame:
     paginator = client.get_paginator("get_query_results")
 
-    rows = []
+    rows: List[List[Optional[str]]] = []
     colnames: Optional[List[str]] = None
     fetched = 0
 
     for page in paginator.paginate(QueryExecutionId=qid):
-        page_rows = page["ResultSet"]["Rows"]
+        page_rows = page.get("ResultSet", {}).get("Rows", []) or []
+        if not page_rows:
+            continue
+
+        # First page contains header row
         if colnames is None:
-            colnames = [c.get("VarCharValue", "") for c in page_rows[0]["Data"]]
+            header = page_rows[0].get("Data", []) or []
+            colnames = [c.get("VarCharValue", "") for c in header]
             data_rows = page_rows[1:]
         else:
             data_rows = page_rows
 
         for r in data_rows:
-            rows.append([d.get("VarCharValue", None) for d in r["Data"]])
+            data = r.get("Data", []) or []
+            rows.append([d.get("VarCharValue", None) for d in data])
             fetched += 1
             if fetched >= max_rows:
                 break
+
         if fetched >= max_rows:
             break
 
@@ -133,9 +168,9 @@ def fetch_athena_results(client, qid: str, max_rows: int = 2000) -> pd.DataFrame
     return pd.DataFrame(rows, columns=colnames)
 
 
-# -----------------------------
+# =============================================================================
 # SQL builders
-# -----------------------------
+# =============================================================================
 def sql_years() -> str:
     return """
     SELECT CAST(year AS BIGINT) AS year
@@ -226,7 +261,7 @@ def sql_top_claims_per_event(year: int, limit: int = 25) -> str:
 
 
 def sql_hazard_breakdown(county_fips: str, year: int, limit: int = 50) -> str:
-    county_fips = county_fips.strip()
+    cf = normalize_county_fips(county_fips)
     return f"""
     SELECT
       hazard_type,
@@ -235,7 +270,7 @@ def sql_hazard_breakdown(county_fips: str, year: int, limit: int = 50) -> str:
       CAST(total_injuries AS BIGINT) AS total_injuries,
       CAST(avg_property_damage AS DOUBLE) AS avg_property_damage
     FROM gold_hazard.hazard_event_summary_current
-    WHERE LPAD(CAST(county_fips AS VARCHAR), 5, '0') = '{county_fips}'
+    WHERE LPAD(CAST(county_fips AS VARCHAR), 5, '0') = '{cf}'
       AND CAST(year AS BIGINT) = {int(year)}
     ORDER BY event_count DESC
     LIMIT {int(limit)}
@@ -307,7 +342,7 @@ def sql_ranked_risk_realized_claims(year: int, limit: int = 1000) -> str:
 
 
 def sql_county_timeseries_with_rollups(county_fips: str, window_years: int = 5) -> str:
-    county_fips = county_fips.strip()
+    cf = normalize_county_fips(county_fips)
     w = int(window_years)
     return f"""
     WITH base AS (
@@ -318,7 +353,7 @@ def sql_county_timeseries_with_rollups(county_fips: str, window_years: int = 5) 
         CAST(fema_total_damage AS DOUBLE) AS fema_total_damage,
         CAST(nri_risk_score AS DOUBLE) AS nri_risk_score
       FROM gold_hazard.risk_feature_mart_current
-      WHERE LPAD(CAST(county_fips AS VARCHAR), 5, '0') = '{county_fips}'
+      WHERE LPAD(CAST(county_fips AS VARCHAR), 5, '0') = '{cf}'
     )
     SELECT
       year,
@@ -350,9 +385,9 @@ def sql_ranked_risk_with_centroids(inner_sql: str) -> str:
     """
 
 
-# -----------------------------
+# =============================================================================
 # UI helpers
-# -----------------------------
+# =============================================================================
 def filter_badges(*labels: str) -> None:
     cols = st.columns(len(labels))
     for c, lab in zip(cols, labels):
@@ -431,9 +466,13 @@ def format_scan_runtime(scanned_bytes: int, exec_ms: int) -> str:
     return f"Athena scanned: {mb:.2f} MB • Engine runtime: {exec_ms/1000:.2f}s"
 
 
-# -----------------------------
-# Cached query runner
-# -----------------------------
+def utc_now_str() -> str:
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+
+
+# =============================================================================
+# Cached query runner + cached years
+# =============================================================================
 @st.cache_data(ttl=300, show_spinner=False)
 def run_query_cached(
     *,
@@ -459,9 +498,26 @@ def run_query_cached(
     return df, scanned, exec_ms
 
 
-# -----------------------------
+@st.cache_data(ttl=600, show_spinner=False)
+def load_years_cached(region: str, database: str, workgroup: str, output_s3: str, timeout_seconds: int) -> List[int]:
+    df, _, _ = run_query_cached(
+        region=region,
+        database=database,
+        workgroup=workgroup,
+        output_s3=output_s3,
+        sql=sql_years(),
+        max_rows=5000,
+        timeout_seconds=timeout_seconds,
+    )
+    if "year" not in df.columns:
+        return []
+    df = coerce_year_int(df, "year")
+    return sorted({int(y) for y in df["year"].dropna().tolist()})
+
+
+# =============================================================================
 # App
-# -----------------------------
+# =============================================================================
 st.set_page_config(page_title="Risk Explorer", layout="wide")
 
 st.title("Risk Explorer")
@@ -469,11 +525,35 @@ st.caption("Lightweight demo over validated, stable Gold `_current` views in Ath
 
 cfg = get_cfg()
 
-# Persist "has run" and selections
+# Friendly config validation (prevents hard crash on Streamlit Cloud)
+missing = []
+if not cfg.output_s3.startswith("s3://"):
+    missing.append("ATHENA_RESULTS_S3 (or Athena WorkGroup OutputLocation)")
+if not cfg.workgroup:
+    missing.append("ATHENA_WORKGROUP")
+if not cfg.database:
+    missing.append("ATHENA_DB_GOLD")
+
+if missing:
+    st.error(
+        "Missing required configuration:\n\n"
+        + "\n".join([f"- {m}" for m in missing])
+        + "\n\nSet these in **Streamlit → App settings → Secrets** (or ensure your workgroup has OutputLocation)."
+    )
+    st.stop()
+
+# Persist "has run", and "last query stats"
 if "has_run" not in st.session_state:
     st.session_state["has_run"] = False
-if "selected_county_from_year" not in st.session_state:
-    st.session_state["selected_county_from_year"] = ""
+if "last_run_utc" not in st.session_state:
+    st.session_state["last_run_utc"] = None
+if "last_query_stats" not in st.session_state:
+    st.session_state["last_query_stats"] = ""
+
+
+def record_last_query_stats(scanned: int, exec_ms: int) -> None:
+    st.session_state["last_query_stats"] = format_scan_runtime(scanned, exec_ms)
+
 
 with st.sidebar:
     st.header("Connection")
@@ -483,42 +563,38 @@ with st.sidebar:
     st.text(f"Results: {cfg.output_s3}")
 
     st.divider()
+    st.header("Demo Status")
+    st.caption(f"Last run (UTC): {st.session_state['last_run_utc'] or '—'}")
+    if st.session_state["last_query_stats"]:
+        st.caption(f"Last query: {st.session_state['last_query_stats']}")
+
+    st.divider()
     st.header("Health Check")
     st.caption("Quick checks to confirm Athena + Gold views are reachable.")
-
     show_health = st.toggle("Show health check panel", value=True, key="show_health_panel")
 
     st.divider()
     st.header("Global Filters")
     st.caption("Filters apply only after you click **Run Explorer**.")
 
-    @st.cache_data(ttl=600, show_spinner=False)
-    def load_years(region: str, database: str, workgroup: str, output_s3: str) -> List[int]:
-        df, _, _ = run_query_cached(
-            region=region,
-            database=database,
-            workgroup=workgroup,
-            output_s3=output_s3,
-            sql=sql_years(),
-            max_rows=5000,
-            timeout_seconds=90,
-        )
-        if "year" not in df.columns:
-            return []
-        df = coerce_year_int(df, "year")
-        years = sorted({int(y) for y in df["year"].dropna().tolist()})
-        return years
+    timeout_seconds = st.slider(
+        "Athena timeout (seconds)", min_value=30, max_value=240, value=120, step=10, key="timeout_seconds"
+    )
 
-    years = load_years(cfg.region, cfg.database, cfg.workgroup, cfg.output_s3)
+    try:
+        years = load_years_cached(cfg.region, cfg.database, cfg.workgroup, cfg.output_s3, timeout_seconds)
+    except Exception as e:
+        st.error("Could not load available years from Athena.")
+        st.code(str(e))
+        st.stop()
+
     if not years:
         st.error("No years found in `risk_feature_mart_current`. Check Gold views and database setting.")
         st.stop()
 
     year = st.selectbox("Year", years, index=len(years) - 1, key="year_select")
 
-    # If user clicked from Year View, prefer that county_fips
-    default_county = st.session_state.get("selected_county_from_year") or "06037"
-    county_fips_in = st.text_input("County FIPS (5 digits)", value=default_county, key="county_fips_input")
+    county_fips_in = st.text_input("County FIPS (5 digits)", value="06037", key="county_fips_input")
     county_fips = normalize_county_fips(county_fips_in)
 
     roll_window = st.selectbox("Rolling window (years)", [3, 5, 7], index=1, key="roll_window")
@@ -526,25 +602,43 @@ with st.sidebar:
     st.divider()
     st.header("Run Settings")
     show_query_stats = st.toggle("Show Athena scan + runtime stats", value=True, key="show_query_stats")
-    timeout_seconds = st.slider(
-        "Athena timeout (seconds)", min_value=30, max_value=180, value=90, step=10, key="timeout_seconds"
+
+    map_points_cap = st.slider(
+        "Map point cap (performance)",
+        min_value=250,
+        max_value=max(500, cfg.map_max_points_cap),
+        value=min(cfg.map_max_points_cap, 1500),
+        step=250,
+        help="Hard cap after filters (prevents rendering too many points).",
+        key="map_points_cap",
     )
 
     st.divider()
     st.header("Actions")
+    c_run, c_reset, c_clear = st.columns([1, 1, 1])
 
-    c_run, c_clear = st.columns([1, 1])
     with c_run:
         if st.button("Run Explorer", type="primary", key="run_btn"):
             st.session_state["has_run"] = True
             st.session_state["last_year"] = int(year)
             st.session_state["last_county_fips"] = county_fips
             st.session_state["last_roll_window"] = int(roll_window)
+            st.session_state["last_run_utc"] = utc_now_str()
+
+    with c_reset:
+        if st.button("Reset", key="reset_btn"):
+            st.session_state["has_run"] = False
+            st.session_state["last_query_stats"] = ""
+            st.session_state["last_year"] = int(years[-1])
+            st.session_state["last_county_fips"] = "06037"
+            st.session_state["last_roll_window"] = 5
+            st.rerun()
 
     with c_clear:
         if st.button("Clear cache", key="clear_cache_btn"):
             st.cache_data.clear()
             st.success("Cleared Streamlit cache. Re-run Explorer.")
+
 
 # Pre-run validation
 if not st.session_state["has_run"]:
@@ -560,16 +654,15 @@ if not is_valid_fips(county_fips):
     st.error("County FIPS must be exactly 5 digits (e.g., 06037).")
     st.stop()
 
-# -----------------------------
+# =============================================================================
 # Health Check (main body)
-# -----------------------------
+# =============================================================================
 if st.session_state.get("show_health_panel", True):
     with st.expander("✅ Health Check (connection + Gold views)", expanded=False):
         st.caption("Runs lightweight queries and confirms row counts for key Gold `_current` views.")
         if st.button("Run Health Check", key="run_health_btn"):
             with st.spinner("Running health checks..."):
                 try:
-                    # Query 1: SELECT 1
                     df_1, s1, e1 = run_query_cached(
                         region=cfg.region,
                         database=cfg.database,
@@ -579,7 +672,8 @@ if st.session_state.get("show_health_panel", True):
                         max_rows=10,
                         timeout_seconds=timeout_seconds,
                     )
-                    # Query 2: table counts
+                    record_last_query_stats(s1, e1)
+
                     df_hc, s2, e2 = run_query_cached(
                         region=cfg.region,
                         database=cfg.database,
@@ -589,6 +683,8 @@ if st.session_state.get("show_health_panel", True):
                         max_rows=50,
                         timeout_seconds=timeout_seconds,
                     )
+                    record_last_query_stats(s2, e2)
+
                     st.success("Health check passed.")
                     if show_query_stats:
                         st.caption(f"SELECT 1 • {format_scan_runtime(s1, e1)}")
@@ -598,9 +694,9 @@ if st.session_state.get("show_health_panel", True):
                     st.error("Health check failed.")
                     st.code(str(ex))
 
-# -----------------------------
+# =============================================================================
 # Applied Filters banner
-# -----------------------------
+# =============================================================================
 st.markdown("### Applied Filters")
 filter_badges(
     f"Year = **{year}**",
@@ -609,7 +705,6 @@ filter_badges(
     f"Max rows = **{cfg.max_rows}**",
 )
 
-# Key interpretation note
 with st.expander("How to interpret these metrics (structural vs realized)", expanded=True):
     st.markdown(
         """
@@ -632,9 +727,9 @@ with st.expander("Data sources used (Gold `_current` views)", expanded=False):
 """
     )
 
-# -----------------------------
+# =============================================================================
 # Results
-# -----------------------------
+# =============================================================================
 tab_county, tab_year = st.tabs(["County View", "Year View (All Counties)"])
 
 # ============================================================
@@ -644,7 +739,7 @@ with tab_county:
     st.markdown("## County View")
     st.caption("Single-county lens (County FIPS filter applies).")
 
-    # County lookup (name/state)
+    # County lookup (name/state + lat/lon)
     with st.spinner("Loading county metadata..."):
         df_meta, scanned_meta, exec_ms_meta = run_query_cached(
             region=cfg.region,
@@ -655,15 +750,17 @@ with tab_county:
             max_rows=10,
             timeout_seconds=timeout_seconds,
         )
-    if show_query_stats:
-        st.caption(f"County lookup • {format_scan_runtime(scanned_meta, exec_ms_meta)}")
+    record_last_query_stats(scanned_meta, exec_ms_meta)
 
+    meta = {}
     if not df_meta.empty:
         meta = df_meta.iloc[0].to_dict()
         st.markdown(
             f"**Selected county:** {meta.get('county_name','—')}, {meta.get('state','—')} "
             f"(FIPS **{meta.get('county_fips','—')}**)"
         )
+    if show_query_stats:
+        st.caption(f"County lookup • {format_scan_runtime(scanned_meta, exec_ms_meta)}")
 
     st.markdown("### County time series (structural vs realized)")
     st.caption(
@@ -681,6 +778,7 @@ with tab_county:
             max_rows=cfg.max_rows,
             timeout_seconds=timeout_seconds,
         )
+    record_last_query_stats(scanned_ts, exec_ms_ts)
 
     df_ts = coerce_year_int(df_ts, "year")
     for c in [
@@ -705,7 +803,6 @@ with tab_county:
     if df_ts.empty or "year" not in df_ts.columns:
         st.warning("No time series rows returned for this county. (Check county_fips formatting + Gold views.)")
     else:
-        # Structural baseline (NRI)
         st.altair_chart(
             line_chart(
                 df_ts.dropna(subset=["year", "nri_risk_score"]),
@@ -720,7 +817,6 @@ with tab_county:
 
         st.divider()
 
-        # Realized metrics: yearly vs rolling
         c1, c2 = st.columns([1, 1])
         with c1:
             st.altair_chart(
@@ -773,7 +869,7 @@ with tab_county:
                 )
 
         st.markdown("#### Claim intensity (registrations per NOAA event)")
-        st.caption("This can be undefined in years with zero NOAA events (division by zero).")
+        st.caption("Undefined in years with 0 NOAA events (division by zero).")
         if "claims_per_event" in df_ts.columns:
             st.altair_chart(
                 line_chart(
@@ -786,8 +882,6 @@ with tab_county:
                 ),
                 use_container_width=True,
             )
-        else:
-            st.info("Intensity metric unavailable (requires both FEMA registrations and NOAA event counts).")
 
         st.markdown("#### Realized impact (FEMA total damage)")
         roll_col = f"fema_damage_roll{roll_window}"
@@ -818,15 +912,22 @@ with tab_county:
                     use_container_width=True,
                 )
 
-        # Quick county snapshot (latest year in series)
         latest = df_ts.dropna(subset=["year"]).sort_values("year").tail(1)
         if not latest.empty:
             row = latest.iloc[0].to_dict()
             st.markdown("### County snapshot (latest year in series)")
             cA, cB, cC, cD = st.columns(4)
-            cA.metric("NRI (structural)", f"{row.get('nri_risk_score', float('nan')):.2f}" if pd.notna(row.get("nri_risk_score")) else "—")
+            cA.metric(
+                "NRI (structural)",
+                f"{row.get('nri_risk_score', float('nan')):.2f}" if pd.notna(row.get("nri_risk_score")) else "—",
+            )
             cB.metric("NOAA events", f"{int(row.get('noaa_event_count'))}" if pd.notna(row.get("noaa_event_count")) else "—")
-            cC.metric("FEMA registrations", f"{row.get('fema_valid_registrations', float('nan')):.0f}" if pd.notna(row.get("fema_valid_registrations")) else "—")
+            cC.metric(
+                "FEMA registrations",
+                f"{row.get('fema_valid_registrations', float('nan')):.0f}"
+                if pd.notna(row.get("fema_valid_registrations"))
+                else "—",
+            )
             cD.metric("FEMA damage", human_money(row.get("fema_total_damage")))
 
         with st.expander("Raw county time series (table)", expanded=False):
@@ -848,6 +949,7 @@ with tab_county:
             max_rows=cfg.max_rows,
             timeout_seconds=timeout_seconds,
         )
+    record_last_query_stats(scanned_h, exec_ms_h)
 
     if show_query_stats:
         st.caption(format_scan_runtime(scanned_h, exec_ms_h))
@@ -877,6 +979,8 @@ with tab_year:
             max_rows=50,
             timeout_seconds=timeout_seconds,
         )
+    record_last_query_stats(scanned_k, exec_ms_k)
+
     if show_query_stats:
         st.caption(f"Year KPIs • {format_scan_runtime(scanned_k, exec_ms_k)}")
 
@@ -906,7 +1010,6 @@ with tab_year:
         key="rank_mode",
     )
 
-    # choose SQL for ranking
     if rank_mode.startswith("Structural"):
         base_sql = sql_ranked_risk_structural(year=year, limit=1000)
         rank_explain = "Ranks by **NRI** (structural baseline; often static across years)."
@@ -943,6 +1046,7 @@ with tab_year:
                 max_rows=cfg.max_rows,
                 timeout_seconds=timeout_seconds,
             )
+        record_last_query_stats(scanned_top, exec_ms_top)
 
         df_top = coerce_year_int(df_top, "year")
         for c in ["fema_valid_registrations", "noaa_event_count", "claims_per_event"]:
@@ -951,12 +1055,11 @@ with tab_year:
 
         if show_query_stats:
             st.caption(format_scan_runtime(scanned_top, exec_ms_top))
-
         st.dataframe(df_top, use_container_width=True, column_config=dataframe_year_config())
 
         st.divider()
         st.markdown("### NOAA=0 but high structural risk (NRI)")
-        st.caption("This is the signature pattern: **high baseline risk** even when realized annual NOAA events are 0.")
+        st.caption("Signature pattern: **high baseline risk** even when realized annual NOAA events are 0.")
         with st.spinner("Running Athena query: NOAA=0 high NRI..."):
             df_n0, scanned_n0, exec_ms_n0 = run_query_cached(
                 region=cfg.region,
@@ -967,6 +1070,7 @@ with tab_year:
                 max_rows=1000,
                 timeout_seconds=timeout_seconds,
             )
+        record_last_query_stats(scanned_n0, exec_ms_n0)
 
         df_n0 = coerce_year_int(df_n0, "year")
         for c in ["nri_risk_score", "noaa_event_count", "fema_valid_registrations", "fema_total_damage"]:
@@ -976,34 +1080,15 @@ with tab_year:
         if show_query_stats:
             st.caption(format_scan_runtime(scanned_n0, exec_ms_n0))
 
+        # Polished: remove drilldown UI, keep table only
         if df_n0.empty:
-            st.info("No rows found. (This would be unusual; verify data for this year.)")
+            st.info("No rows found. (Unusual — verify data for this year.)")
         else:
-            # Drill-down selector -> pushes into County View
-            options = []
-            for _, r in df_n0.iterrows():
-                cf = normalize_county_fips(str(r.get("county_fips", "")))
-                nri = r.get("nri_risk_score")
-                opts = f"{cf} • NRI={nri:.2f}" if pd.notna(nri) else f"{cf}"
-                options.append(opts)
-
-            selected = st.selectbox(
-                "Drill down into a county (updates County View filter)",
-                options,
-                index=0,
-                key="noaa0_picker",
-            )
-            picked_fips = normalize_county_fips(selected.split("•")[0].strip())
-            if st.button("Open in County View", key="open_in_county_btn"):
-                st.session_state["selected_county_from_year"] = picked_fips
-                st.session_state["last_county_fips"] = picked_fips
-                st.success(f"Updated County FIPS to {picked_fips}. Switch to the County View tab.")
-
             st.dataframe(df_n0, use_container_width=True, column_config=dataframe_year_config())
 
     with col_right:
         st.markdown("### Ranked counties + map")
-        st.caption("Map uses county centroids (points). Use filters + metric selection for analysis.")
+        st.caption("Map uses county centroids (points). Includes a **highlight** for your selected County FIPS.")
 
         map_mode = st.radio(
             "Map mode",
@@ -1013,35 +1098,33 @@ with tab_year:
             key="map_mode",
         )
 
-        # Map controls
         metric = st.selectbox(
-            "Map metric",
-            [
-                "nri_risk_score",
-                "noaa_event_count",
-                "fema_valid_registrations",
-                "fema_total_damage",
-            ],
+            "Map color metric",
+            ["nri_risk_score", "noaa_event_count", "fema_valid_registrations", "fema_total_damage"],
             index=0,
             key="map_metric",
         )
         size_by = st.selectbox(
             "Dot size by",
-            [
-                "nri_risk_score",
-                "noaa_event_count",
-                "fema_valid_registrations",
-                "fema_total_damage",
-                "(constant)",
-            ],
-            index=1,
+            ["noaa_event_count", "fema_valid_registrations", "fema_total_damage", "nri_risk_score", "(constant)"],
+            index=0,
             key="map_size_by",
         )
         only_noaa0 = st.toggle("Filter: only NOAA=0 counties", value=False, key="only_noaa0")
-        top_n = st.slider("Max points (top N after ranking)", min_value=100, max_value=1000, value=600, step=50, key="top_n")
+        top_n = st.slider(
+            "Max points (top N after ranking)",
+            min_value=100,
+            max_value=1000,
+            value=min(cfg.map_default_top_n, 1000),
+            step=50,
+            key="top_n",
+        )
 
-        # Load ranked dataset (optionally with centroids)
-        if map_mode.startswith("Show map"):
+        want_map = map_mode.startswith("Show map")
+        sql_to_run = sql_ranked_risk_with_centroids(base_sql) if want_map else base_sql
+
+        # Load ranked dataset (optionally with centroids). If centroids query fails, we fall back to table-only.
+        if want_map:
             try:
                 with st.spinner("Running Athena query: ranked counties (with centroids)..."):
                     df_r, scanned_r, exec_ms_r = run_query_cached(
@@ -1049,8 +1132,8 @@ with tab_year:
                         database=cfg.database,
                         workgroup=cfg.workgroup,
                         output_s3=cfg.output_s3,
-                        sql=sql_ranked_risk_with_centroids(base_sql),
-                        max_rows=max(cfg.max_rows, 1200),
+                        sql=sql_to_run,
+                        max_rows=max(cfg.max_rows, 1500),
                         timeout_seconds=timeout_seconds,
                     )
             except Exception as e:
@@ -1064,9 +1147,10 @@ with tab_year:
                         workgroup=cfg.workgroup,
                         output_s3=cfg.output_s3,
                         sql=base_sql,
-                        max_rows=max(cfg.max_rows, 1200),
+                        max_rows=max(cfg.max_rows, 1500),
                         timeout_seconds=timeout_seconds,
                     )
+                want_map = False  # no centroids, so we won't attempt the map
         else:
             with st.spinner("Running Athena query: ranked counties (table)..."):
                 df_r, scanned_r, exec_ms_r = run_query_cached(
@@ -1075,19 +1159,21 @@ with tab_year:
                     workgroup=cfg.workgroup,
                     output_s3=cfg.output_s3,
                     sql=base_sql,
-                    max_rows=max(cfg.max_rows, 1200),
+                    max_rows=max(cfg.max_rows, 1500),
                     timeout_seconds=timeout_seconds,
                 )
 
+        record_last_query_stats(scanned_r, exec_ms_r)
+
         df_r = coerce_year_int(df_r, "year")
-        for c in ["nri_risk_score", "noaa_event_count", "fema_valid_registrations", "fema_total_damage"]:
+        for c in ["nri_risk_score", "noaa_event_count", "fema_valid_registrations", "fema_total_damage", "lat", "lon"]:
             if c in df_r.columns:
                 df_r[c] = pd.to_numeric(df_r[c], errors="coerce")
 
         if show_query_stats:
             st.caption(format_scan_runtime(scanned_r, exec_ms_r))
 
-        if "noaa_event_count" in df_r.columns:
+        if "noaa_event_count" in df_r.columns and len(df_r) > 0:
             zero_pct = 100.0 * (df_r["noaa_event_count"].fillna(0).astype(float) == 0).mean()
             st.caption(f"Share of counties with **0 NOAA events** in {year}: {zero_pct:.2f}%")
 
@@ -1097,40 +1183,37 @@ with tab_year:
             df_view = df_view[df_view["noaa_event_count"].fillna(0).astype(float) == 0.0]
         df_view = df_view.head(int(top_n))
 
-        # Render map if lat/lon exist
-        if map_mode.startswith("Show map") and {"lat", "lon"}.issubset(df_view.columns):
+        # Map rendering (pydeck) if we have lat/lon
+        if want_map and {"lat", "lon"}.issubset(df_view.columns):
             df_map = df_view.dropna(subset=["lat", "lon"]).copy()
             df_map["lat"] = pd.to_numeric(df_map["lat"], errors="coerce")
             df_map["lon"] = pd.to_numeric(df_map["lon"], errors="coerce")
             df_map = df_map.dropna(subset=["lat", "lon"])
 
+            # Hard cap for performance
+            df_map = df_map.head(int(map_points_cap))
+
             if df_map.empty:
                 st.warning("No lat/lon values available to plot on a map (after filters).")
             else:
-                # Build size + color scalars (lightweight normalization)
-                mvals = pd.to_numeric(df_map.get(metric), errors="coerce")
-                sval = pd.to_numeric(df_map.get(size_by if size_by != "(constant)" else metric), errors="coerce")
-
-                # Size scaling
+                # Build size scalar
                 if size_by == "(constant)":
-                    df_map["_radius"] = 25000
+                    df_map["_radius"] = 25000.0
                 else:
-                    s = sval.fillna(0.0).clip(lower=0.0)
-                    smax = float(s.max()) if len(s) else 0.0
-                    if smax <= 0:
-                        df_map["_radius"] = 25000
-                    else:
-                        df_map["_radius"] = (2000 + 38000 * (s / smax)).astype(float)
+                    sraw = pd.to_numeric(df_map.get(size_by), errors="coerce").fillna(0.0).clip(lower=0.0)
+                    smax = float(sraw.max()) if len(sraw) else 0.0
+                    df_map["_radius"] = 25000.0 if smax <= 0 else (2000.0 + 38000.0 * (sraw / smax)).astype(float)
 
-                # Simple color scaling: darkens with higher metric (no custom palette)
-                v = mvals.fillna(0.0)
-                vmax = float(v.max()) if len(v) else 0.0
+                # Build color scalar (simple normalization, no custom palette dependency)
+                vraw = pd.to_numeric(df_map.get(metric), errors="coerce").fillna(0.0)
+                vmax = float(vraw.max()) if len(vraw) else 0.0
                 if vmax <= 0:
                     df_map["_c"] = 120
                 else:
-                    df_map["_c"] = (50 + 180 * (v / vmax)).clip(50, 230).astype(int)
+                    df_map["_c"] = (50 + 180 * (vraw / vmax)).clip(50, 230).astype(int)
 
-                df_map["_color"] = df_map["_c"].apply(lambda x: [int(x), int(60), int(255 - min(x, 200)), 160])
+                # RGBA list
+                df_map["_color"] = df_map["_c"].apply(lambda x: [int(x), 60, int(255 - min(int(x), 200)), 160])
 
                 tooltip = {
                     "html": (
@@ -1140,10 +1223,11 @@ with tab_year:
                         "NOAA events: {noaa_event_count}<br/>"
                         "FEMA regs: {fema_valid_registrations}<br/>"
                         "FEMA damage: {fema_total_damage}"
-                    )
+                    ),
+                    "style": {"backgroundColor": "white", "color": "black"},
                 }
 
-                layer = pdk.Layer(
+                base_layer = pdk.Layer(
                     "ScatterplotLayer",
                     data=df_map,
                     get_position="[lon, lat]",
@@ -1151,30 +1235,38 @@ with tab_year:
                     get_fill_color="_color",
                     pickable=True,
                     stroked=False,
+                    auto_highlight=True,
                 )
 
-                # View
+                # Highlight selected county (if present with lat/lon)
+                highlight_layers = [base_layer]
+                selected_cf = normalize_county_fips(county_fips)
+                df_sel = df_map[df_map["county_fips"].astype(str).apply(normalize_county_fips) == selected_cf].copy()
+                if not df_sel.empty:
+                    df_sel["_radius_sel"] = (df_sel["_radius"].astype(float) * 1.4).clip(4000.0, 60000.0)
+                    highlight_layer = pdk.Layer(
+                        "ScatterplotLayer",
+                        data=df_sel,
+                        get_position="[lon, lat]",
+                        get_radius="_radius_sel",
+                        get_fill_color="[255, 165, 0, 220]",  # highlight: orange-ish
+                        pickable=True,
+                        stroked=True,
+                        get_line_color="[0, 0, 0, 220]",
+                        line_width_min_pixels=2,
+                    )
+                    highlight_layers.append(highlight_layer)
+
                 view_state = pdk.ViewState(latitude=39.5, longitude=-98.35, zoom=3, pitch=0)
 
                 st.markdown("#### Map (county centroids)")
-                st.caption(f"Color: {metric} • Size: {size_by}")
-                st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip=tooltip))
+                st.caption(f"Color: {metric} • Size: {size_by} • Points shown: {len(df_map)} (cap={map_points_cap})")
+                st.pydeck_chart(pdk.Deck(layers=highlight_layers, initial_view_state=view_state, tooltip=tooltip))
 
         st.markdown(f"#### Ranked table (top 50 by {rank_col})")
         st.dataframe(df_view.head(50), use_container_width=True, column_config=dataframe_year_config())
 
-        # Quick drill-down from ranked table (manual FIPS picker)
-        if "county_fips" in df_view.columns:
-            st.markdown("#### Drill down into a ranked county")
-            fips_list = [normalize_county_fips(str(x)) for x in df_view["county_fips"].head(200).tolist()]
-            fips_list = [x for x in fips_list if is_valid_fips(x)]
-            if fips_list:
-                pick = st.selectbox("Select county FIPS", fips_list, index=0, key="ranked_picker")
-                if st.button("Open selected county in County View", key="open_ranked_in_county"):
-                    st.session_state["selected_county_from_year"] = pick
-                    st.session_state["last_county_fips"] = pick
-                    st.success(f"Updated County FIPS to {pick}. Switch to the County View tab.")
-
+        # Polished: remove ranked-table drilldown UI
         csv = df_view.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Download CSV",
