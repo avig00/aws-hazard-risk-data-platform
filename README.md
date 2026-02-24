@@ -151,6 +151,17 @@ Used for:
 All ZIP-level data is deterministically mapped to `county_fips`
 prior to aggregation into Gold.
 
+### U.S. Census Bureau – Gazetteer Files (Counties, National)
+
+- **Source:** U.S. Census Bureau Gazetteer Files  
+- **File Used:** `2025_Gaz_counties_national.txt`  
+- **Grain:** County-level (national coverage)  
+- **Purpose:** Provides official county FIPS codes, county names, land area, and geographic centroid coordinates (latitude and longitude).  
+- **Role in Platform:**  
+  - Powers the `gold_hazard.county_centroids_current` view  
+  - Enables county-level geospatial visualization in the Streamlit Risk Explorer map  
+  - Serves as the canonical geographic reference layer for FIPS normalization and joins across hazard datasets  
+
 ---
 
 # System Architecture
