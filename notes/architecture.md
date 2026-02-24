@@ -64,12 +64,22 @@ This table is used by Project 2 ML pipeline.
 
 ---
 
-## 5. Orchestration — MWAA/Airflow
+## 5. Orchestration — Step Functions + Lambda
 
-Three main DAGs:
-- *bronze_ingestion_dag*
-- *silver_transform_dag*
-- *gold_mart_dag*
+This platform uses **AWS Step Functions** as the orchestration layer, invoking **Lambda-based agents** for each stage of the pipeline. Each agent performs a focused responsibility (ingest, catalog, transform, validate, publish), and Step Functions enforces ordering, retries, and hard-fail behavior.
+
+Primary workflow:
+- **Agent Controller State Machine** (Step Functions)
+  - **IngestionAgent (Lambda)**: triggers Bronze ingestion jobs and writes run manifests
+  - **CatalogAgent (Lambda)**: runs Glue crawlers / catalog refresh
+  - **TransformAgent (Lambda)**: executes Silver transformations
+  - **GoldMartAgent (Lambda)**: builds Gold marts and `_current` views
+  - **QualityAgent (Lambda)**: runs validation checks; blocks promotion on failure
+
+Why this approach:
+- Serverless orchestration with explicit state visibility (every transition is traceable)
+- Deterministic build → validate → promote pattern for stable downstream contracts
+- Clear separation of concerns via agent-style Lambdas
 
 ---
 
@@ -80,7 +90,6 @@ Terraform manages:
 - IAM roles/policies
 - Glue jobs + triggers
 - Glue Crawlers
-- MWAA environment
 - Athena Workgroup
 
 ---

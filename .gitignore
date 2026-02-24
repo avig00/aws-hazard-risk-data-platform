@@ -62,16 +62,6 @@ coverage.xml
 **/sagemaker/**/*
 
 # ============================================
-# AIRFLOW / MWAA
-# ============================================
-
-# Airflow local metadata
-airflow.db
-airflow.sqlite
-logs/*
-!logs/.gitkeep
-
-# ============================================
 # TERRAFORM
 # ============================================
 
