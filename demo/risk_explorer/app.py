@@ -707,12 +707,14 @@ filter_badges(
 
 with st.expander("How to interpret these metrics (structural vs realized)", expanded=True):
     st.markdown(
-        """
+    """
 **Important:** the platform combines **structural** and **realized** signals:
 
 - **Structural risk (NRI)** is usually a *baseline* index (often static across years).
 - **Realized frequency (NOAA events)** is *annual* and can be 0 in high-risk counties.
 - **Realized impact (FEMA registrations / damage)** is *annual* and captures observed outcomes.
+
+**Why you may see NOAA=0 but high NRI:** NRI reflects long-term expected loss (hazard probability + exposure + vulnerability), while NOAA events are year-specific realizations and can be zero in a “quiet” year.
 
 To reduce year-to-year noise, the County View also includes **rolling averages** for realized metrics.
 """

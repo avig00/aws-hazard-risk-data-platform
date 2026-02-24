@@ -30,6 +30,57 @@ Athena Database: `gold_hazard`
 
 ---
 
+# Live Application — Streamlit Risk Explorer
+
+🔗 https://3kcosn5vywzqzzhxmmtjvr.streamlit.app/
+
+This production-deployed Streamlit application demonstrates the Gold `_current`
+views in action.
+
+It supports:
+
+- Structural vs realized risk analysis
+- County-level time series exploration
+- Partition-aware year filtering
+- Athena scan + runtime telemetry
+- Interactive county centroid mapping
+- CSV export for downstream analysis
+
+The app reads exclusively from stable Gold `_current` views and never
+directly from versioned physical tables, preserving the downstream contract.
+
+## Key Capabilities
+
+### County View
+- Structural baseline: NRI risk score
+- Realized annual NOAA frequency
+- Realized FEMA registrations
+- Realized FEMA total damage
+- Rolling averages (3y / 5y / 7y)
+- Claim intensity (registrations per event)
+- Hazard-type breakdown (NOAA)
+
+### Year View (All Counties)
+- Structural vs realized ranking modes:
+  - Structural risk (NRI)
+  - Realized frequency (NOAA events)
+  - Realized outcomes (FEMA registrations)
+  - Realized impact (FEMA damage)
+- Claim intensity ranking
+- NOAA=0 but high structural risk detection
+- Interactive PyDeck county centroid map
+- CSV export
+- Athena scan + runtime telemetry
+- Built-in health check panel
+
+The app enforces:
+- Explicit `year` partition filters
+- Limited result sets
+- Stable `_current` view reads
+- No direct access to versioned physical tables
+
+This ensures safe, cost-aware, and reproducible analytics.
+
 # Data Sources & Geographic Standardization
 
 This platform integrates multiple public datasets and standardizes them
@@ -203,6 +254,29 @@ Both are fully ML-ready and analytically stable.
 
 ---
 
+# Partitioning & Athena Cost Controls
+
+Gold physical tables are partitioned by `year`.
+
+All application queries:
+- Explicitly filter by `year`
+- Avoid `SELECT *`
+- Use columnar Parquet format
+- Limit returned rows
+- Cap map rendering volume
+
+Athena scan cost is reduced through:
+- Partition pruning
+- Narrow projections
+- Controlled row limits
+- Cached query execution in Streamlit
+
+The Streamlit app also surfaces:
+- Data scanned (MB)
+- Engine execution time (seconds)
+
+This provides visibility into query cost and runtime performance.
+
 # Versioned Physical Tables
 
 Each run creates:
@@ -304,6 +378,35 @@ Validation failures:
 -   Guarantee downstream stability
 
 ---
+
+# Production Validation Checklist
+
+Before closing a deployment, the following validations are performed:
+
+### Infrastructure
+- Athena WorkGroup reachable
+- Output S3 location configured
+- Gold database accessible
+
+### Gold Views
+- `_current` views exist
+- Row counts return successfully
+- Partition pruning confirmed via `year` filters
+
+### Streamlit Application
+- Health check panel passes
+- County View renders multiple counties
+- Year View ranking modes switch without error
+- Map renders with centroid join
+- CSV export functions correctly
+- Invalid FIPS input fails safely (no crash)
+
+### Cost & Performance
+- Athena scans remain bounded
+- Map rendering respects point cap
+- Cache clearing works correctly
+
+These checks confirm the system is stable, reproducible, and production-safe.
 
 # Design Principles
 
