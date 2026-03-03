@@ -388,6 +388,27 @@ def sql_ranked_risk_with_centroids(inner_sql: str) -> str:
 # =============================================================================
 # UI helpers
 # =============================================================================
+STREAMLIT_RED = "#ff4b4b"
+
+
+def inject_accent_styles() -> None:
+    st.markdown(
+        f"""
+        <style>
+        div[data-testid="stMarkdownContainer"] code,
+        div[data-testid="stCaptionContainer"] code,
+        p code,
+        li code {{
+            color: {STREAMLIT_RED} !important;
+            background-color: rgba(255, 75, 75, 0.12) !important;
+            border: 1px solid rgba(255, 75, 75, 0.18);
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def filter_badges(*labels: str) -> None:
     if not labels:
         return
@@ -450,10 +471,11 @@ def line_chart(
     y_title: str,
     height: int = 280,
 ) -> alt.Chart:
-    base = alt.Chart(df).mark_line(point=True).encode(
+    base = alt.Chart(df).mark_line(point=alt.OverlayMarkDef(filled=True, size=55), strokeWidth=3).encode(
         x=alt.X(f"{x}:Q", axis=fmt_year_axis()),
         y=alt.Y(f"{y}:Q", axis=alt.Axis(title=y_title)),
         tooltip=[alt.Tooltip(f"{x}:Q", format="d"), alt.Tooltip(f"{y}:Q")],
+        color=alt.value(STREAMLIT_RED),
     )
     return base.properties(title=title, height=height).interactive()
 
@@ -542,6 +564,7 @@ def load_years_cached(region: str, database: str, workgroup: str, output_s3: str
 # App
 # =============================================================================
 st.set_page_config(page_title="Risk Explorer", page_icon="🌊", layout="wide")
+inject_accent_styles()
 hero_left, hero_right = st.columns([2.2, 1.2])
 with hero_left:
     st.title("Risk Explorer")
