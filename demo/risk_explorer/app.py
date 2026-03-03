@@ -734,10 +734,32 @@ def load_years_cached(region: str, database: str, workgroup: str, output_s3: str
 # =============================================================================
 # App
 # =============================================================================
-st.set_page_config(page_title="Risk Explorer", layout="wide")
+st.set_page_config(page_title="Risk Explorer", page_icon="🌊", layout="wide")
+inject_global_styles()
 
-st.title("Risk Explorer")
-st.caption("Lightweight demo over validated, stable Gold `_current` views in Athena.")
+st.markdown(
+    f"""
+    <section class="risk-hero">
+        <h1>Risk Explorer</h1>
+        <p>Cool-toned demo UI over validated Gold <code>_current</code> views in Athena, designed for fast structural vs realized risk analysis.</p>
+        <div class="risk-hero-grid">
+            <div class="risk-hero-chip">
+                <span>Data Contract</span>
+                Stable Gold <code>_current</code> views only
+            </div>
+            <div class="risk-hero-chip">
+                <span>Query Model</span>
+                Partition-aware county and year exploration
+            </div>
+            <div class="risk-hero-chip">
+                <span>UX Goal</span>
+                Clearer analysis flow with lower visual noise
+            </div>
+        </div>
+    </section>
+    """,
+    unsafe_allow_html=True,
+)
 
 cfg = get_cfg()
 
@@ -858,7 +880,7 @@ with st.sidebar:
 
 # Pre-run validation
 if not st.session_state["has_run"]:
-    st.info("Set filters on the left and click **Run Explorer**.")
+    render_notice("Ready to Run", "Set filters in the sidebar, then click <strong>Run Explorer</strong> to populate the dashboard.")
     st.stop()
 
 # Always operate on last applied filters to avoid confusing reruns
@@ -913,12 +935,23 @@ if st.session_state.get("show_health_panel", True):
 # =============================================================================
 # Applied Filters banner
 # =============================================================================
-st.markdown("### Applied Filters")
+section_intro(
+    "Applied Filters",
+    "The dashboard below reflects the last committed run state so rerenders do not accidentally drift from your selected inputs.",
+)
 filter_badges(
-    f"Year = **{year}**",
-    f"County FIPS = **{county_fips}**",
-    f"Rolling window = **{roll_window}y**",
-    f"Max rows = **{cfg.max_rows}**",
+    f"Year = {year}",
+    f"County FIPS = {county_fips}",
+    f"Rolling window = {roll_window}y",
+    f"Max rows = {cfg.max_rows}",
+)
+
+render_kpi_cards(
+    [
+        ("Athena workgroup", cfg.workgroup),
+        ("Gold database", cfg.database),
+        ("Last run (UTC)", st.session_state["last_run_utc"] or "Not run yet"),
+    ]
 )
 
 with st.expander("How to interpret these metrics (structural vs realized)", expanded=True):
@@ -973,9 +1006,9 @@ with tab_county:
     meta = {}
     if not df_meta.empty:
         meta = df_meta.iloc[0].to_dict()
-        st.markdown(
-            f"**Selected county:** {meta.get('county_name','—')}, {meta.get('state','—')} "
-            f"(FIPS **{meta.get('county_fips','—')}**)"
+        section_intro(
+            "Selected County",
+            f"{meta.get('county_name','—')}, {meta.get('state','—')} (FIPS {meta.get('county_fips','—')})",
         )
     if show_query_stats:
         st.caption(f"County lookup • {format_scan_runtime(scanned_meta, exec_ms_meta)}")
@@ -1019,7 +1052,11 @@ with tab_county:
         st.caption(format_scan_runtime(scanned_ts, exec_ms_ts))
 
     if df_ts.empty or "year" not in df_ts.columns:
-        st.warning("No time series rows returned for this county. (Check county_fips formatting + Gold views.)")
+        render_notice(
+            "No County Time Series",
+            "No rows were returned for this county. Confirm the County FIPS format and that the Gold views are populated for this slice.",
+            tone="warning",
+        )
     else:
         st.altair_chart(
             line_chart(
@@ -1134,19 +1171,29 @@ with tab_county:
         if not latest.empty:
             row = latest.iloc[0].to_dict()
             st.markdown("### County snapshot (latest year in series)")
-            cA, cB, cC, cD = st.columns(4)
-            cA.metric(
-                "NRI (structural)",
-                f"{row.get('nri_risk_score', float('nan')):.2f}" if pd.notna(row.get("nri_risk_score")) else "—",
+            render_kpi_cards(
+                [
+                    (
+                        "NRI (structural)",
+                        f"{row.get('nri_risk_score', float('nan')):.2f}"
+                        if pd.notna(row.get("nri_risk_score"))
+                        else "—",
+                    ),
+                    (
+                        "NOAA events",
+                        f"{int(row.get('noaa_event_count'))}"
+                        if pd.notna(row.get("noaa_event_count"))
+                        else "—",
+                    ),
+                    (
+                        "FEMA registrations",
+                        f"{row.get('fema_valid_registrations', float('nan')):.0f}"
+                        if pd.notna(row.get("fema_valid_registrations"))
+                        else "—",
+                    ),
+                    ("FEMA damage", human_money(row.get("fema_total_damage"))),
+                ]
             )
-            cB.metric("NOAA events", f"{int(row.get('noaa_event_count'))}" if pd.notna(row.get("noaa_event_count")) else "—")
-            cC.metric(
-                "FEMA registrations",
-                f"{row.get('fema_valid_registrations', float('nan')):.0f}"
-                if pd.notna(row.get("fema_valid_registrations"))
-                else "—",
-            )
-            cD.metric("FEMA damage", human_money(row.get("fema_total_damage")))
 
         with st.expander("Raw county time series (table)", expanded=False):
             st.dataframe(df_ts, use_container_width=True, column_config=dataframe_year_config())
@@ -1173,9 +1220,9 @@ with tab_county:
         st.caption(format_scan_runtime(scanned_h, exec_ms_h))
 
     if df_h.empty:
-        st.info(
-            "No hazard rows returned for this county/year. This can happen in quiet years (0 realized events) "
-            "even if structural risk is high."
+        render_notice(
+            "No Hazard Rows for This Slice",
+            "This county/year can legitimately be quiet with 0 realized events even when the structural baseline is elevated.",
         )
     st.dataframe(df_h, use_container_width=True)
 
@@ -1208,13 +1255,16 @@ with tab_year:
         med_zero = safe_float(k.get("median_nri_noaa_zero"))
         med_pos = safe_float(k.get("median_nri_noaa_pos"))
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("% counties with NOAA=0", f"{pct_zero:.2f}%" if pct_zero is not None else "—")
-        c2.metric("Median NRI (NOAA=0)", f"{med_zero:.2f}" if med_zero is not None else "—")
-        c3.metric("Median NRI (NOAA>0)", f"{med_pos:.2f}" if med_pos is not None else "—")
+        render_kpi_cards(
+            [
+                ("% counties with NOAA=0", f"{pct_zero:.2f}%" if pct_zero is not None else "—"),
+                ("Median NRI (NOAA=0)", f"{med_zero:.2f}" if med_zero is not None else "—"),
+                ("Median NRI (NOAA>0)", f"{med_pos:.2f}" if med_pos is not None else "—"),
+            ]
+        )
 
     st.divider()
-    st.markdown("### Ranking mode")
+    section_intro("Ranking Mode", "Switch between structural and realized ranking logic without changing the underlying Gold contract.")
     rank_mode = st.radio(
         "Rank counties by…",
         [
@@ -1230,22 +1280,22 @@ with tab_year:
 
     if rank_mode.startswith("Structural"):
         base_sql = sql_ranked_risk_structural(year=year, limit=1000)
-        rank_explain = "Ranks by **NRI** (structural baseline; often static across years)."
+        rank_explain = "Ranks by NRI, the structural baseline that is often static across years."
         rank_col = "nri_risk_score"
     elif rank_mode.startswith("Realized frequency"):
         base_sql = sql_ranked_risk_realized_frequency(year=year, limit=1000)
-        rank_explain = "Ranks by **NOAA event count** (realized annual frequency)."
+        rank_explain = "Ranks by NOAA event count, the realized annual frequency."
         rank_col = "noaa_event_count"
     elif rank_mode.startswith("Realized outcomes"):
         base_sql = sql_ranked_risk_realized_claims(year=year, limit=1000)
-        rank_explain = "Ranks by **FEMA registrations** (realized annual outcomes proxy)."
+        rank_explain = "Ranks by FEMA registrations, a realized annual outcomes proxy."
         rank_col = "fema_valid_registrations"
     else:
         base_sql = sql_ranked_risk_realized_impact(year=year, limit=1000)
-        rank_explain = "Ranks by **FEMA total damage** (realized annual impact proxy)."
+        rank_explain = "Ranks by FEMA total damage, a realized annual impact proxy."
         rank_col = "fema_total_damage"
 
-    st.caption(rank_explain)
+    render_notice("Ranking Logic", rank_explain)
 
     col_left, col_right = st.columns([1, 1])
 
@@ -1300,7 +1350,7 @@ with tab_year:
 
         # Polished: remove drilldown UI, keep table only
         if df_n0.empty:
-            st.info("No rows found. (Unusual — verify data for this year.)")
+            render_notice("No NOAA=0 High-NRI Rows", "No rows matched this signature for the selected year. That is unusual, but possible.")
         else:
             st.dataframe(df_n0, use_container_width=True, column_config=dataframe_year_config())
 
@@ -1355,7 +1405,11 @@ with tab_year:
                         timeout_seconds=timeout_seconds,
                     )
             except Exception as e:
-                st.warning("Could not load county centroids for map rendering. Falling back to table-only.")
+                render_notice(
+                    "Map Fallback",
+                    "County centroids could not be loaded for mapping, so the view has fallen back to table-only mode.",
+                    tone="warning",
+                )
                 with st.expander("Error details (debug)", expanded=False):
                     st.code(str(e))
                 with st.spinner("Running Athena query: ranked counties (table)..."):
@@ -1412,7 +1466,11 @@ with tab_year:
             df_map = df_map.head(int(map_points_cap))
 
             if df_map.empty:
-                st.warning("No lat/lon values available to plot on a map (after filters).")
+                render_notice(
+                    "No Mappable Points",
+                    "After filters were applied, no county centroid coordinates remained to render on the map.",
+                    tone="warning",
+                )
             else:
                 # Build size scalar
                 if size_by == "(constant)":
@@ -1430,8 +1488,10 @@ with tab_year:
                 else:
                     df_map["_c"] = (50 + 180 * (vraw / vmax)).clip(50, 230).astype(int)
 
-                # RGBA list
-                df_map["_color"] = df_map["_c"].apply(lambda x: [int(x), 60, int(255 - min(int(x), 200)), 160])
+                # RGBA list in a cool blue/teal range.
+                df_map["_color"] = df_map["_c"].apply(
+                    lambda x: [20, min(160, int(70 + x // 2)), min(255, int(120 + x // 2)), 170]
+                )
 
                 tooltip = {
                     "html": (
@@ -1467,10 +1527,10 @@ with tab_year:
                         data=df_sel,
                         get_position="[lon, lat]",
                         get_radius="_radius_sel",
-                        get_fill_color="[255, 165, 0, 220]",  # highlight: orange-ish
+                        get_fill_color="[14, 165, 233, 220]",
                         pickable=True,
                         stroked=True,
-                        get_line_color="[0, 0, 0, 220]",
+                        get_line_color="[15, 23, 42, 220]",
                         line_width_min_pixels=2,
                     )
                     highlight_layers.append(highlight_layer)
@@ -1494,7 +1554,7 @@ with tab_year:
         )
 
 st.divider()
-st.markdown("### Platform guarantees")
+section_intro("Platform Guarantees", "The UI is polished, but the operational contract remains the same: stable views, bounded scans, and deterministic promotion behavior.")
 st.markdown(
     """
 - Reads from Gold `_current` views (stable downstream contract)
@@ -1504,4 +1564,8 @@ st.markdown(
 """
 )
 
-st.success("Done. This demo reads from Gold `_current` views and stays stable across rebuilds.")
+render_notice(
+    "Demo Status",
+    "This demo reads from Gold <code>_current</code> views and stays stable across rebuilds.",
+    tone="success",
+)

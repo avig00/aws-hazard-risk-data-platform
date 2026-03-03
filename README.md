@@ -32,6 +32,8 @@ Athena Database: `gold_hazard`
 
 # Live Application — Streamlit Risk Explorer
 
+[![Streamlit Risk Explorer](https://img.shields.io/badge/Streamlit-Risk%20Explorer-0f766e?style=for-the-badge&logo=streamlit&logoColor=white)](https://3kcosn5vywzqzzhxmmtjvr.streamlit.app/)
+
 🔗 https://3kcosn5vywzqzzhxmmtjvr.streamlit.app/
 
 This production-deployed Streamlit application demonstrates the Gold `_current`
@@ -181,6 +183,54 @@ flowchart LR
     S3 --> A
     A --> BI
 ```
+
+## Snowflake-Native Equivalent Architecture
+
+This repository is implemented with AWS-native services first. If the same
+platform were deployed in a Snowflake-native stack, the operating model would
+stay the same while the compute and storage layers would shift.
+
+Equivalent component mapping:
+
+- **Terraform IaC** -> **Terraform + Snowflake provider**
+- **AWS Step Functions** -> **Snowflake Tasks** (or an external orchestrator driving Snowflake)
+- **Lambda Agents** -> **Snowpark Python, stored procedures, or task-invoked procedures**
+- **S3 Bronze / Silver / Gold** -> **Snowflake databases, schemas, stages, and managed tables**
+- **Athena** -> **Snowflake virtual warehouses**
+- **BI / ML / Agents** -> **BI tools, notebooks, apps, and downstream consumers querying Snowflake**
+
+```mermaid
+flowchart LR
+    TF[Terraform IaC]
+    ST[Snowflake Tasks]
+    SP[Snowpark / Stored Procedures]
+    SN[Snowflake<br/>Bronze / Silver / Gold]
+    WH[Virtual Warehouses]
+    BI[BI / ML / Apps]
+
+    TF --> ST
+    ST --> SP
+    SP --> SN
+    SN --> WH
+    WH --> BI
+```
+
+What stays the same:
+
+- Medallion architecture (Bronze, Silver, Gold)
+- Deterministic transformations and validation gates
+- Versioned promotion workflow
+- Stable consumer-facing `_current` views
+
+What changes operationally:
+
+- Storage becomes Snowflake-managed instead of S3-backed query-over-files
+- Query serving shifts from Athena scans to Snowflake warehouse compute
+- Orchestration becomes task/procedure-centric instead of Step Functions + Lambda
+- Cost controls focus on warehouse sizing, auto-suspend, and workload isolation
+
+This section is intended as an equivalent reference architecture, not a
+replacement for the AWS implementation in this repository.
 
 ---
 
