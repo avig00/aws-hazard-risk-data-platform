@@ -696,7 +696,7 @@ with st.sidebar:
 
 # Pre-run validation
 if not st.session_state["has_run"]:
-    render_notice("Ready to Run", "Set filters in the sidebar, then click <strong>Run Explorer</strong> to populate the dashboard.")
+    render_notice("Ready to Run", "Set filters in the sidebar, then click `Run Explorer` to populate the dashboard.")
     st.stop()
 
 # Always operate on last applied filters to avoid confusing reruns
@@ -752,8 +752,8 @@ if st.session_state.get("show_health_panel", True):
 # Applied Filters banner
 # =============================================================================
 section_intro(
-    "Applied Filters",
-    "The dashboard below reflects the last committed run state so rerenders do not accidentally drift from your selected inputs.",
+    "Explorer Summary",
+    "Start with the KPI row, then use County View for one-county trend analysis and Year View for statewide ranking and anomaly scans.",
 )
 filter_badges(
     f"Year = {year}",
@@ -770,6 +770,22 @@ render_kpi_cards(
     ]
 )
 
+overview_left, overview_right = st.columns([1.4, 1])
+with overview_left:
+    st.markdown("##### Start Here")
+    st.markdown(
+        """
+1. Review the KPI row to confirm the active slice and environment.
+2. Use **County View** to compare structural baseline vs observed outcomes for one county.
+3. Use **Year View** to rank counties, inspect the map, and identify anomalies worth drilling into.
+"""
+    )
+with overview_right:
+    st.markdown("##### Design Focus")
+    st.caption("Primary insights stay visible; diagnostics and raw data live lower in the layout.")
+    if st.session_state["last_query_stats"]:
+        st.caption(f"Most recent query: {st.session_state['last_query_stats']}")
+
 with st.expander("How to interpret these metrics (structural vs realized)", expanded=True):
     st.markdown(
     """
@@ -785,15 +801,6 @@ To reduce year-to-year noise, the County View also includes **rolling averages**
 """
     )
 
-with st.expander("Data sources used (Gold `_current` views)", expanded=False):
-    st.markdown(
-        """
-- `gold_hazard.risk_feature_mart_current`
-- `gold_hazard.hazard_event_summary_current`
-- `gold_hazard.county_centroids_current`
-"""
-    )
-
 # =============================================================================
 # Results
 # =============================================================================
@@ -804,7 +811,7 @@ tab_county, tab_year = st.tabs(["County View", "Year View (All Counties)"])
 # ============================================================
 with tab_county:
     st.markdown("## County View")
-    st.caption("Single-county lens (County FIPS filter applies).")
+    st.caption("Single-county lens focused on trend interpretation. Lead with the snapshot and primary trends, then open diagnostics as needed.")
 
     # County lookup (name/state + lat/lon)
     with st.spinner("Loading county metadata..."):
@@ -874,115 +881,6 @@ with tab_county:
             tone="warning",
         )
     else:
-        st.altair_chart(
-            line_chart(
-                df_ts.dropna(subset=["year", "nri_risk_score"]),
-                x="year",
-                y="nri_risk_score",
-                title="Structural baseline: NRI risk score (often static across years)",
-                y_title="NRI risk score",
-                height=240,
-            ),
-            use_container_width=True,
-        )
-
-        st.divider()
-
-        c1, c2 = st.columns([1, 1])
-        with c1:
-            st.altair_chart(
-                line_chart(
-                    df_ts.dropna(subset=["year", "noaa_event_count"]),
-                    x="year",
-                    y="noaa_event_count",
-                    title="Realized frequency: NOAA events (annual)",
-                    y_title="NOAA events",
-                ),
-                use_container_width=True,
-            )
-            roll_col = f"noaa_events_roll{roll_window}"
-            if roll_col in df_ts.columns:
-                st.altair_chart(
-                    line_chart(
-                        df_ts.dropna(subset=["year", roll_col]),
-                        x="year",
-                        y=roll_col,
-                        title=f"Realized frequency: NOAA events ({roll_window}y rolling avg)",
-                        y_title="NOAA events (rolling)",
-                        height=240,
-                    ),
-                    use_container_width=True,
-                )
-
-        with c2:
-            st.altair_chart(
-                line_chart(
-                    df_ts.dropna(subset=["year", "fema_valid_registrations"]),
-                    x="year",
-                    y="fema_valid_registrations",
-                    title="Realized outcomes: FEMA registrations (annual)",
-                    y_title="FEMA registrations",
-                ),
-                use_container_width=True,
-            )
-            roll_col = f"fema_regs_roll{roll_window}"
-            if roll_col in df_ts.columns:
-                st.altair_chart(
-                    line_chart(
-                        df_ts.dropna(subset=["year", roll_col]),
-                        x="year",
-                        y=roll_col,
-                        title=f"Realized outcomes: FEMA registrations ({roll_window}y rolling avg)",
-                        y_title="Registrations (rolling)",
-                        height=240,
-                    ),
-                    use_container_width=True,
-                )
-
-        st.markdown("#### Claim intensity (registrations per NOAA event)")
-        st.caption("Undefined in years with 0 NOAA events (division by zero).")
-        if "claims_per_event" in df_ts.columns:
-            st.altair_chart(
-                line_chart(
-                    df_ts.dropna(subset=["year", "claims_per_event"]),
-                    x="year",
-                    y="claims_per_event",
-                    title="Realized intensity: FEMA registrations per NOAA event",
-                    y_title="Registrations / event",
-                    height=240,
-                ),
-                use_container_width=True,
-            )
-
-        st.markdown("#### Realized impact (FEMA total damage)")
-        roll_col = f"fema_damage_roll{roll_window}"
-        c3, c4 = st.columns([1, 1])
-        with c3:
-            st.altair_chart(
-                line_chart(
-                    df_ts.dropna(subset=["year", "fema_total_damage"]),
-                    x="year",
-                    y="fema_total_damage",
-                    title="FEMA total damage (annual)",
-                    y_title="Total damage",
-                    height=240,
-                ),
-                use_container_width=True,
-            )
-        with c4:
-            if roll_col in df_ts.columns:
-                st.altair_chart(
-                    line_chart(
-                        df_ts.dropna(subset=["year", roll_col]),
-                        x="year",
-                        y=roll_col,
-                        title=f"FEMA total damage ({roll_window}y rolling avg)",
-                        y_title="Damage (rolling)",
-                        height=240,
-                    ),
-                    use_container_width=True,
-                )
-
         latest = df_ts.dropna(subset=["year"]).sort_values("year").tail(1)
         if not latest.empty:
             row = latest.iloc[0].to_dict()
@@ -1011,43 +909,166 @@ with tab_county:
                 ]
             )
 
+        primary_left, primary_right = st.columns([1.8, 1])
+        with primary_left:
+            st.altair_chart(
+                line_chart(
+                    df_ts.dropna(subset=["year", "nri_risk_score"]),
+                    x="year",
+                    y="nri_risk_score",
+                    title="Structural baseline: NRI risk score (often static across years)",
+                    y_title="NRI risk score",
+                    height=260,
+                ),
+                use_container_width=True,
+            )
+        with primary_right:
+            st.markdown("##### What To Look For")
+            st.markdown(
+                """
+- Is the structural baseline consistently elevated?
+- Do observed NOAA events spike away from the baseline?
+- Do FEMA outcomes lag or amplify realized hazard frequency?
+"""
+            )
+            st.caption("Use the annual trend row next for the clearest structural vs realized comparison.")
+
+        st.markdown("### Primary realized signals")
+        primary_c1, primary_c2 = st.columns(2)
+        with primary_c1:
+            st.altair_chart(
+                line_chart(
+                    df_ts.dropna(subset=["year", "noaa_event_count"]),
+                    x="year",
+                    y="noaa_event_count",
+                    title="Realized frequency: NOAA events (annual)",
+                    y_title="NOAA events",
+                ),
+                use_container_width=True,
+            )
+        with primary_c2:
+            st.altair_chart(
+                line_chart(
+                    df_ts.dropna(subset=["year", "fema_valid_registrations"]),
+                    x="year",
+                    y="fema_valid_registrations",
+                    title="Realized outcomes: FEMA registrations (annual)",
+                    y_title="FEMA registrations",
+                ),
+                use_container_width=True,
+            )
+
+        with st.expander("Trend details (rolling averages)", expanded=False):
+            roll_col = f"noaa_events_roll{roll_window}"
+            detail_c1, detail_c2 = st.columns(2)
+            with detail_c1:
+                if roll_col in df_ts.columns:
+                    st.altair_chart(
+                        line_chart(
+                            df_ts.dropna(subset=["year", roll_col]),
+                            x="year",
+                            y=roll_col,
+                            title=f"Realized frequency: NOAA events ({roll_window}y rolling avg)",
+                            y_title="NOAA events (rolling)",
+                            height=240,
+                        ),
+                        use_container_width=True,
+                    )
+            roll_col = f"fema_regs_roll{roll_window}"
+            with detail_c2:
+                if roll_col in df_ts.columns:
+                    st.altair_chart(
+                        line_chart(
+                            df_ts.dropna(subset=["year", roll_col]),
+                            x="year",
+                            y=roll_col,
+                            title=f"Realized outcomes: FEMA registrations ({roll_window}y rolling avg)",
+                            y_title="Registrations (rolling)",
+                            height=240,
+                        ),
+                        use_container_width=True,
+                    )
+
+        with st.expander("Secondary diagnostics", expanded=False):
+            st.caption("These diagnostics support interpretation, but they are intentionally secondary to the primary trend read.")
+            if "claims_per_event" in df_ts.columns:
+                st.altair_chart(
+                    line_chart(
+                        df_ts.dropna(subset=["year", "claims_per_event"]),
+                        x="year",
+                        y="claims_per_event",
+                        title="Realized intensity: FEMA registrations per NOAA event",
+                        y_title="Registrations / event",
+                        height=240,
+                    ),
+                    use_container_width=True,
+                )
+
+            roll_col = f"fema_damage_roll{roll_window}"
+            diag_c1, diag_c2 = st.columns(2)
+            with diag_c1:
+                st.altair_chart(
+                    line_chart(
+                        df_ts.dropna(subset=["year", "fema_total_damage"]),
+                        x="year",
+                        y="fema_total_damage",
+                        title="FEMA total damage (annual)",
+                        y_title="Total damage",
+                        height=240,
+                    ),
+                    use_container_width=True,
+                )
+            with diag_c2:
+                if roll_col in df_ts.columns:
+                    st.altair_chart(
+                        line_chart(
+                            df_ts.dropna(subset=["year", roll_col]),
+                            x="year",
+                            y=roll_col,
+                            title=f"FEMA total damage ({roll_window}y rolling avg)",
+                            y_title="Damage (rolling)",
+                            height=240,
+                        ),
+                        use_container_width=True,
+                    )
+
         with st.expander("Raw county time series (table)", expanded=False):
             st.dataframe(df_ts, use_container_width=True, column_config=dataframe_year_config())
 
     st.divider()
 
-    st.markdown("### Hazard breakdown (selected county + year)")
-    st.caption("Realized breakdown of observed NOAA hazards for the selected county/year.")
-    filter_badges("Filters: County FIPS + Year", "Source: hazard_event_summary_current")
+    with st.expander("Hazard breakdown (selected county + year)", expanded=False):
+        st.caption("Observed NOAA hazard composition for the selected county/year.")
+        filter_badges("Filters: County FIPS + Year", "Source: hazard_event_summary_current")
 
-    with st.spinner("Running Athena query: hazard breakdown..."):
-        df_h, scanned_h, exec_ms_h = run_query_cached(
-            region=cfg.region,
-            database=cfg.database,
-            workgroup=cfg.workgroup,
-            output_s3=cfg.output_s3,
-            sql=sql_hazard_breakdown(county_fips=county_fips, year=year),
-            max_rows=cfg.max_rows,
-            timeout_seconds=timeout_seconds,
-        )
-    record_last_query_stats(scanned_h, exec_ms_h)
+        with st.spinner("Running Athena query: hazard breakdown..."):
+            df_h, scanned_h, exec_ms_h = run_query_cached(
+                region=cfg.region,
+                database=cfg.database,
+                workgroup=cfg.workgroup,
+                output_s3=cfg.output_s3,
+                sql=sql_hazard_breakdown(county_fips=county_fips, year=year),
+                max_rows=cfg.max_rows,
+                timeout_seconds=timeout_seconds,
+            )
+        record_last_query_stats(scanned_h, exec_ms_h)
 
-    if show_query_stats:
-        st.caption(format_scan_runtime(scanned_h, exec_ms_h))
+        if show_query_stats:
+            st.caption(format_scan_runtime(scanned_h, exec_ms_h))
 
-    if df_h.empty:
-        render_notice(
-            "No Hazard Rows for This Slice",
-            "This county/year can legitimately be quiet with 0 realized events even when the structural baseline is elevated.",
-        )
-    st.dataframe(df_h, use_container_width=True)
+        if df_h.empty:
+            render_notice(
+                "No Hazard Rows for This Slice",
+                "This county/year can legitimately be quiet with 0 realized events even when the structural baseline is elevated.",
+            )
+        st.dataframe(df_h, use_container_width=True)
 
 # ============================================================
 # Year View (All Counties)
 # ============================================================
 with tab_year:
     st.markdown("## Year View (All Counties)")
-    st.caption("Single-year lens (Year filter applies). Distinguishes **structural** vs **realized** rankings.")
+    st.caption("Single-year ranking view. Lead with the ranked map, then open supporting anomaly tables only when needed.")
 
     # KPI row (fast, high-signal)
     with st.spinner("Computing year KPIs..."):
@@ -1078,6 +1099,8 @@ with tab_year:
                 ("Median NRI (NOAA>0)", f"{med_pos:.2f}" if med_pos is not None else "—"),
             ]
         )
+    else:
+        pct_zero = None
 
     st.divider()
     section_intro("Ranking Mode", "Switch between structural and realized ranking logic without changing the underlying Gold contract.")
@@ -1112,67 +1135,73 @@ with tab_year:
         rank_col = "fema_total_damage"
 
     render_notice("Ranking Logic", rank_explain)
+    if pct_zero is not None:
+        st.caption(
+            f"Signature read: {pct_zero:.2f}% of counties in {year} have 0 realized NOAA events, so the map is most useful for separating quiet-year realizations from structural baseline risk."
+        )
 
-    col_left, col_right = st.columns([1, 1])
+    col_left, col_right = st.columns([0.9, 1.4])
 
     with col_left:
-        st.markdown("### Top claim intensity (registrations per event)")
-        st.caption("Spots counties with unusually high registrations relative to realized event count.")
-        filter_badges("Filters: Year", "Source: risk_feature_mart_current")
+        st.markdown("### Supporting diagnostics")
+        st.caption("These panels are secondary. Use them after the ranked map/table identifies an area worth investigating.")
 
-        with st.spinner("Running Athena query: top claim intensity..."):
-            df_top, scanned_top, exec_ms_top = run_query_cached(
-                region=cfg.region,
-                database=cfg.database,
-                workgroup=cfg.workgroup,
-                output_s3=cfg.output_s3,
-                sql=sql_top_claims_per_event(year=year, limit=25),
-                max_rows=cfg.max_rows,
-                timeout_seconds=timeout_seconds,
-            )
-        record_last_query_stats(scanned_top, exec_ms_top)
+        with st.expander("Top claim intensity (registrations per event)", expanded=False):
+            filter_badges("Filters: Year", "Source: risk_feature_mart_current")
+            with st.spinner("Running Athena query: top claim intensity..."):
+                df_top, scanned_top, exec_ms_top = run_query_cached(
+                    region=cfg.region,
+                    database=cfg.database,
+                    workgroup=cfg.workgroup,
+                    output_s3=cfg.output_s3,
+                    sql=sql_top_claims_per_event(year=year, limit=25),
+                    max_rows=cfg.max_rows,
+                    timeout_seconds=timeout_seconds,
+                )
+            record_last_query_stats(scanned_top, exec_ms_top)
 
-        df_top = coerce_year_int(df_top, "year")
-        for c in ["fema_valid_registrations", "noaa_event_count", "claims_per_event"]:
-            if c in df_top.columns:
-                df_top[c] = pd.to_numeric(df_top[c], errors="coerce")
+            df_top = coerce_year_int(df_top, "year")
+            for c in ["fema_valid_registrations", "noaa_event_count", "claims_per_event"]:
+                if c in df_top.columns:
+                    df_top[c] = pd.to_numeric(df_top[c], errors="coerce")
 
-        if show_query_stats:
-            st.caption(format_scan_runtime(scanned_top, exec_ms_top))
-        st.dataframe(df_top, use_container_width=True, column_config=dataframe_year_config())
+            if show_query_stats:
+                st.caption(format_scan_runtime(scanned_top, exec_ms_top))
+            st.dataframe(df_top, use_container_width=True, column_config=dataframe_year_config())
 
-        st.divider()
-        st.markdown("### NOAA=0 but high structural risk (NRI)")
-        st.caption("Signature pattern: **high baseline risk** even when realized annual NOAA events are 0.")
-        with st.spinner("Running Athena query: NOAA=0 high NRI..."):
-            df_n0, scanned_n0, exec_ms_n0 = run_query_cached(
-                region=cfg.region,
-                database=cfg.database,
-                workgroup=cfg.workgroup,
-                output_s3=cfg.output_s3,
-                sql=sql_noaa0_high_nri(year=year, limit=50),
-                max_rows=1000,
-                timeout_seconds=timeout_seconds,
-            )
-        record_last_query_stats(scanned_n0, exec_ms_n0)
+        with st.expander("NOAA=0 but high structural risk (NRI)", expanded=False):
+            st.caption("Signature pattern: high baseline risk even when realized annual NOAA events are 0.")
+            with st.spinner("Running Athena query: NOAA=0 high NRI..."):
+                df_n0, scanned_n0, exec_ms_n0 = run_query_cached(
+                    region=cfg.region,
+                    database=cfg.database,
+                    workgroup=cfg.workgroup,
+                    output_s3=cfg.output_s3,
+                    sql=sql_noaa0_high_nri(year=year, limit=50),
+                    max_rows=1000,
+                    timeout_seconds=timeout_seconds,
+                )
+            record_last_query_stats(scanned_n0, exec_ms_n0)
 
-        df_n0 = coerce_year_int(df_n0, "year")
-        for c in ["nri_risk_score", "noaa_event_count", "fema_valid_registrations", "fema_total_damage"]:
-            if c in df_n0.columns:
-                df_n0[c] = pd.to_numeric(df_n0[c], errors="coerce")
+            df_n0 = coerce_year_int(df_n0, "year")
+            for c in ["nri_risk_score", "noaa_event_count", "fema_valid_registrations", "fema_total_damage"]:
+                if c in df_n0.columns:
+                    df_n0[c] = pd.to_numeric(df_n0[c], errors="coerce")
 
-        if show_query_stats:
-            st.caption(format_scan_runtime(scanned_n0, exec_ms_n0))
+            if show_query_stats:
+                st.caption(format_scan_runtime(scanned_n0, exec_ms_n0))
 
-        # Polished: remove drilldown UI, keep table only
-        if df_n0.empty:
-            render_notice("No NOAA=0 High-NRI Rows", "No rows matched this signature for the selected year. That is unusual, but possible.")
-        else:
-            st.dataframe(df_n0, use_container_width=True, column_config=dataframe_year_config())
+            if df_n0.empty:
+                render_notice(
+                    "No NOAA=0 High-NRI Rows",
+                    "No rows matched this signature for the selected year. That is unusual, but possible.",
+                )
+            else:
+                st.dataframe(df_n0, use_container_width=True, column_config=dataframe_year_config())
 
     with col_right:
-        st.markdown("### Ranked counties + map")
-        st.caption("Map uses county centroids (points). Includes a **highlight** for your selected County FIPS.")
+        st.markdown("### Primary ranking view")
+        st.caption("This is the main decision surface. Use the controls below to rank counties, then inspect the map before scanning the table.")
 
         map_mode = st.radio(
             "Map mode",
@@ -1355,19 +1384,27 @@ with tab_year:
                 st.caption(f"Color: {metric} • Size: {size_by} • Points shown: {len(df_map)} (cap={map_points_cap})")
                 st.pydeck_chart(pdk.Deck(layers=highlight_layers, initial_view_state=view_state, tooltip=tooltip))
 
-        st.markdown(f"#### Ranked table (top 50 by {rank_col})")
-        st.dataframe(df_view.head(50), use_container_width=True, column_config=dataframe_year_config())
+        with st.expander(f"Ranked table (top 50 by {rank_col})", expanded=True):
+            st.dataframe(df_view.head(50), use_container_width=True, column_config=dataframe_year_config())
 
-        # Polished: remove ranked-table drilldown UI
-        csv = df_view.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Download CSV",
-            data=csv,
-            file_name=f"ranked_{rank_mode.split('(')[0].strip().replace(' ', '_').lower()}_{year}.csv",
-            mime="text/csv",
-        )
+            csv = df_view.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download CSV",
+                data=csv,
+                file_name=f"ranked_{rank_mode.split('(')[0].strip().replace(' ', '_').lower()}_{year}.csv",
+                mime="text/csv",
+            )
 
 st.divider()
+with st.expander("Data sources used (Gold `_current` views)", expanded=False):
+    st.markdown(
+        """
+- `gold_hazard.risk_feature_mart_current`
+- `gold_hazard.hazard_event_summary_current`
+- `gold_hazard.county_centroids_current`
+"""
+    )
+
 section_intro("Platform Guarantees", "The UI is polished, but the operational contract remains the same: stable views, bounded scans, and deterministic promotion behavior.")
 st.markdown(
     """
@@ -1380,6 +1417,6 @@ st.markdown(
 
 render_notice(
     "Demo Status",
-    "This demo reads from Gold <code>_current</code> views and stays stable across rebuilds.",
+    "This demo reads from Gold `_current` views and stays stable across rebuilds.",
     tone="success",
 )
