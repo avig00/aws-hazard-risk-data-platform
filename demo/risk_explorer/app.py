@@ -388,10 +388,212 @@ def sql_ranked_risk_with_centroids(inner_sql: str) -> str:
 # =============================================================================
 # UI helpers
 # =============================================================================
+THEME = {
+    "bg": "#eff6ff",
+    "surface": "#f8fafc",
+    "surface_alt": "#e2e8f0",
+    "border": "#cbd5e1",
+    "text": "#0f172a",
+    "muted": "#475569",
+    "accent": "#2563eb",
+    "accent_soft": "#dbeafe",
+    "accent_2": "#0f766e",
+    "accent_2_soft": "#ccfbf1",
+    "ink_soft": "#e0f2fe",
+}
+
+
+def inject_global_styles() -> None:
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background:
+                radial-gradient(circle at top right, {THEME["ink_soft"]} 0%, rgba(224, 242, 254, 0) 35%),
+                linear-gradient(180deg, #f8fbff 0%, {THEME["bg"]} 100%);
+            color: {THEME["text"]};
+        }}
+        .block-container {{
+            padding-top: 1.4rem;
+            padding-bottom: 2rem;
+        }}
+        div[data-testid="stSidebar"] {{
+            background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+            border-right: 1px solid {THEME["border"]};
+        }}
+        div[data-testid="stMetric"] {{
+            background: rgba(248, 250, 252, 0.88);
+            border: 1px solid {THEME["border"]};
+            border-radius: 16px;
+            padding: 0.75rem 0.9rem;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+        }}
+        div[data-testid="stMetric"] label {{
+            color: {THEME["muted"]};
+        }}
+        .risk-hero {{
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.98), rgba(14, 116, 144, 0.92));
+            color: white;
+            border-radius: 22px;
+            padding: 1.35rem 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 20px 40px rgba(30, 64, 175, 0.20);
+        }}
+        .risk-hero h1 {{
+            margin: 0;
+            font-size: 2rem;
+            line-height: 1.1;
+        }}
+        .risk-hero p {{
+            margin: 0.5rem 0 0;
+            color: rgba(255, 255, 255, 0.88);
+        }}
+        .risk-hero-grid {{
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }}
+        .risk-hero-chip {{
+            background: rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 14px;
+            padding: 0.75rem 0.85rem;
+        }}
+        .risk-hero-chip span {{
+            display: block;
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: rgba(255, 255, 255, 0.72);
+            margin-bottom: 0.2rem;
+        }}
+        .risk-badge {{
+            display: inline-block;
+            margin: 0.15rem 0.35rem 0.15rem 0;
+            padding: 0.35rem 0.7rem;
+            border-radius: 999px;
+            border: 1px solid {THEME["border"]};
+            background: rgba(248, 250, 252, 0.92);
+            color: {THEME["muted"]};
+            font-size: 0.86rem;
+            font-weight: 600;
+        }}
+        .risk-section {{
+            background: rgba(248, 250, 252, 0.82);
+            border: 1px solid {THEME["border"]};
+            border-radius: 18px;
+            padding: 0.9rem 1rem;
+            margin: 0.35rem 0 1rem;
+        }}
+        .risk-section h3 {{
+            margin: 0;
+            color: {THEME["text"]};
+            font-size: 1rem;
+        }}
+        .risk-section p {{
+            margin: 0.35rem 0 0;
+            color: {THEME["muted"]};
+        }}
+        .risk-note {{
+            border-radius: 16px;
+            padding: 0.85rem 1rem;
+            margin: 0.35rem 0 1rem;
+            border: 1px solid {THEME["border"]};
+            background: rgba(219, 234, 254, 0.72);
+            color: {THEME["text"]};
+        }}
+        .risk-note strong {{
+            display: block;
+            margin-bottom: 0.2rem;
+        }}
+        .risk-note-warning {{
+            background: rgba(207, 250, 254, 0.72);
+            border-color: #99f6e4;
+        }}
+        .risk-note-success {{
+            background: rgba(204, 251, 241, 0.78);
+            border-color: #99f6e4;
+        }}
+        .risk-kpi-grid {{
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.75rem;
+            margin: 0.35rem 0 0.9rem;
+        }}
+        .risk-kpi-card {{
+            background: rgba(248, 250, 252, 0.92);
+            border: 1px solid {THEME["border"]};
+            border-radius: 16px;
+            padding: 0.9rem 1rem;
+        }}
+        .risk-kpi-card span {{
+            display: block;
+            color: {THEME["muted"]};
+            font-size: 0.82rem;
+            margin-bottom: 0.25rem;
+        }}
+        .risk-kpi-card strong {{
+            color: {THEME["text"]};
+            font-size: 1.35rem;
+        }}
+        @media (max-width: 900px) {{
+            .risk-hero-grid,
+            .risk-kpi-grid {{
+                grid-template-columns: 1fr;
+            }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def filter_badges(*labels: str) -> None:
-    cols = st.columns(len(labels))
-    for c, lab in zip(cols, labels):
-        c.caption(lab)
+    if not labels:
+        return
+    badges = "".join([f"<span class='risk-badge'>{lab}</span>" for lab in labels])
+    st.markdown(badges, unsafe_allow_html=True)
+
+
+def section_intro(title: str, body: str) -> None:
+    st.markdown(
+        f"""
+        <div class="risk-section">
+            <h3>{title}</h3>
+            <p>{body}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_notice(title: str, body: str, *, tone: str = "info") -> None:
+    tone_class = {
+        "warning": "risk-note risk-note-warning",
+        "success": "risk-note risk-note-success",
+    }.get(tone, "risk-note")
+    st.markdown(
+        f"""
+        <div class="{tone_class}">
+            <strong>{title}</strong>
+            {body}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_kpi_cards(cards: List[Tuple[str, str]]) -> None:
+    if not cards:
+        return
+    body = "".join(
+        [
+            f"<div class='risk-kpi-card'><span>{label}</span><strong>{value}</strong></div>"
+            for label, value in cards
+        ]
+    )
+    st.markdown(f"<div class='risk-kpi-grid'>{body}</div>", unsafe_allow_html=True)
 
 
 def normalize_county_fips(x: str) -> str:
@@ -427,12 +629,26 @@ def line_chart(
     y_title: str,
     height: int = 280,
 ) -> alt.Chart:
-    base = alt.Chart(df).mark_line(point=True).encode(
+    base = (
+        alt.Chart(df)
+        .mark_line(point=alt.OverlayMarkDef(color=THEME["accent_2"], filled=True, size=55), strokeWidth=3)
+        .encode(
         x=alt.X(f"{x}:Q", axis=fmt_year_axis()),
-        y=alt.Y(f"{y}:Q", axis=alt.Axis(title=y_title)),
+        y=alt.Y(
+            f"{y}:Q",
+            axis=alt.Axis(title=y_title, gridColor=THEME["surface_alt"], domainColor=THEME["border"]),
+        ),
         tooltip=[alt.Tooltip(f"{x}:Q", format="d"), alt.Tooltip(f"{y}:Q")],
+        color=alt.value(THEME["accent"]),
     )
-    return base.properties(title=title, height=height).interactive()
+    )
+    return (
+        base.properties(title=title, height=height)
+        .configure_view(strokeOpacity=0)
+        .configure_title(color=THEME["text"], fontSize=15, anchor="start")
+        .configure_axis(labelColor=THEME["muted"], titleColor=THEME["muted"])
+        .interactive()
+    )
 
 
 def dataframe_year_config():
