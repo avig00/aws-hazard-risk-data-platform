@@ -1173,6 +1173,10 @@ with tab_county:
             )
         record_last_query_stats(scanned_h, exec_ms_h)
 
+        for c in ["event_count", "total_fatalities", "total_injuries", "avg_property_damage"]:
+            if c in df_h.columns:
+                df_h[c] = pd.to_numeric(df_h[c], errors="coerce")
+
         if show_query_stats:
             st.caption(format_scan_runtime(scanned_h, exec_ms_h))
 
