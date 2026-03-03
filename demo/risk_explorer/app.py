@@ -549,7 +549,7 @@ def bar_chart(
     title: str,
     x_title: str,
     y_title: str,
-    height: int = 260,
+    height: int = 300,
 ) -> alt.Chart:
     plot_df = df.copy()
     if y in plot_df.columns:
@@ -559,7 +559,7 @@ def bar_chart(
     x_enc = alt.X(
         f"{x}:N",
         sort=alt.EncodingSortField(field=y, order="descending"),
-        axis=alt.Axis(title=x_title, labelAngle=-25),
+        axis=alt.Axis(title=x_title, labelAngle=0, labelLimit=240),
     )
     y_enc = alt.Y(f"{y}:Q", axis=alt.Axis(title=y_title))
 
@@ -574,7 +574,10 @@ def bar_chart(
         y=y_enc,
         text=alt.Text(f"{y}:Q", format=".0f"),
     )
-    return (bars + labels).properties(title=title, height=height)
+    return (bars + labels).properties(
+        title=alt.TitleParams(text=title, anchor="start", offset=18),
+        height=height,
+    )
 
 
 def dataframe_year_config():
