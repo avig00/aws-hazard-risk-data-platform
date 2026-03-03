@@ -551,13 +551,30 @@ def bar_chart(
     y_title: str,
     height: int = 260,
 ) -> alt.Chart:
-    base = alt.Chart(df).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
-        x=alt.X(f"{x}:N", sort="-y", axis=alt.Axis(title=x_title, labelAngle=-25)),
-        y=alt.Y(f"{y}:Q", axis=alt.Axis(title=y_title)),
+    plot_df = df.copy()
+    if y in plot_df.columns:
+        plot_df[y] = pd.to_numeric(plot_df[y], errors="coerce")
+    plot_df = plot_df.dropna(subset=[x, y])
+
+    x_enc = alt.X(
+        f"{x}:N",
+        sort=alt.EncodingSortField(field=y, order="descending"),
+        axis=alt.Axis(title=x_title, labelAngle=-25),
+    )
+    y_enc = alt.Y(f"{y}:Q", axis=alt.Axis(title=y_title))
+
+    bars = alt.Chart(plot_df).mark_bar(size=42).encode(
+        x=x_enc,
+        y=y_enc,
         tooltip=[alt.Tooltip(f"{x}:N"), alt.Tooltip(f"{y}:Q")],
         color=alt.value(STREAMLIT_RED),
     )
-    return base.properties(title=title, height=height).interactive()
+    labels = alt.Chart(plot_df).mark_text(dy=-8, color="white").encode(
+        x=x_enc,
+        y=y_enc,
+        text=alt.Text(f"{y}:Q", format=".0f"),
+    )
+    return (bars + labels).properties(title=title, height=height)
 
 
 def dataframe_year_config():
