@@ -24,8 +24,10 @@ WITH base AS (
         THEN CAST(REGEXP_EXTRACT(UPPER(TRIM(damage_property)), '^([0-9]+(\.[0-9]+)?)B$', 1) AS DOUBLE) * 1000000000.0
       ELSE 0.0
     END AS property_damage_usd
-  FROM silver_hazard_cleaned.noaa_events_clean
+  FROM {{athena_db_silver}}.noaa_events_clean
   WHERE county_fips IS NOT NULL AND LENGTH(TRIM(county_fips)) = 5
+    AND substr(TRIM(county_fips), 1, 2) NOT IN ('00', '03')
+    AND substr(TRIM(county_fips), 3, 3) <> '000'
     AND year IS NOT NULL
     AND CAST(year AS BIGINT) BETWEEN 2010 AND 2023
 )

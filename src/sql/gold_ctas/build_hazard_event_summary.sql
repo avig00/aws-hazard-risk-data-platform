@@ -4,7 +4,7 @@
 CREATE TABLE hazard_event_summary__{{run_ds_nodash}}
 WITH (
   format='PARQUET',
-  external_location='s3://{{bucket}}/hazard/gold/hazard_event_summary/run_dt={{run_ds}}/',
+  external_location='s3://{{bucket}}/{{gold_prefix_root}}/hazard_event_summary/run_dt={{run_ds}}/',
   write_compression='SNAPPY'
 ) AS
 SELECT

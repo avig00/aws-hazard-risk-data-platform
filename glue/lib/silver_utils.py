@@ -25,7 +25,9 @@ from typing import List
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     col,
+    coalesce,
     lpad,
+    length,
     regexp_replace,
     when,
     count,
@@ -70,6 +72,111 @@ def standardize_county_fips(df: DataFrame, colname: str = "county_fips") -> Data
         colname,
         when(col(colname).isNull(), lit(None)).otherwise(cleaned),
     )
+
+
+def apply_basic_county_fips_sanity(df: DataFrame, colname: str = "county_fips") -> DataFrame:
+    """
+    Apply baseline county_fips sanity checks.
+
+    This is not a full canonical validation, but it removes obvious bad keys:
+      - not exactly 5 digits after standardization
+      - invalid state placeholders (00, 03)
+      - county code 000
+    """
+    if colname not in df.columns:
+        return df
+
+    cleaned = trim(col(colname).cast("string"))
+    return df.filter(
+        col(colname).isNotNull()
+        & (length(cleaned) == 5)
+        & (~cleaned.startswith("00"))
+        & (~cleaned.startswith("03"))
+        & (cleaned.substr(3, 3) != lit("000"))
+    )
+
+
+def keep_only_canonical_counties(
+    df: DataFrame,
+    canonical_counties_df: DataFrame,
+    colname: str = "county_fips",
+) -> DataFrame:
+    """
+    Keep only rows whose county_fips exists in a canonical reference DataFrame.
+    The reference must contain a `county_fips` column.
+    """
+    if colname not in df.columns or "county_fips" not in canonical_counties_df.columns:
+        return df
+
+    ref = canonical_counties_df.select(
+        trim(col("county_fips").cast("string")).alias("__valid_county_fips")
+    ).dropDuplicates(["__valid_county_fips"])
+
+    return df.join(ref, trim(col(colname).cast("string")) == col("__valid_county_fips"), "left_semi")
+
+
+def normalize_geo_name_column(
+    df: DataFrame,
+    source_col: str,
+    out_col: str,
+) -> DataFrame:
+    """
+    Normalize geography labels for deterministic joins.
+
+    This is intentionally conservative:
+      - uppercase
+      - drop trailing state text after commas
+      - strip NOAA suffix markers like "(C)"
+      - replace punctuation with spaces
+      - remove common county/jurisdiction suffixes
+      - collapse repeated whitespace
+    """
+    if source_col not in df.columns:
+        return df
+
+    cleaned = upper(trim(col(source_col).cast("string")))
+    cleaned = regexp_replace(cleaned, r",.*$", "")
+    cleaned = regexp_replace(cleaned, r"&", " AND ")
+    cleaned = regexp_replace(cleaned, r"\([A-Z]\)", " ")
+    cleaned = regexp_replace(cleaned, r"\b(COUNTY|PARISH|BOROUGH|CENSUS AREA|CITY AND BOROUGH|MUNICIPALITY|MUNICIPIO)\b", "")
+    cleaned = regexp_replace(cleaned, r"\bCITY\b", " ")
+    cleaned = regexp_replace(cleaned, r"[^A-Z0-9]+", " ")
+    cleaned = regexp_replace(cleaned, r"\s+", " ")
+
+    return df.withColumn(
+        out_col,
+        when(trim(col(source_col).cast("string")) == "", lit(None)).otherwise(trim(cleaned)),
+    )
+
+
+def compact_geo_name_column(
+    df: DataFrame,
+    source_col: str,
+    out_col: str,
+) -> DataFrame:
+    """
+    Build a compact geography key by removing spaces from a normalized name.
+    Useful for variants like "DE KALB" vs "DEKALB".
+    """
+    if source_col not in df.columns:
+        return df
+
+    compacted = regexp_replace(trim(col(source_col).cast("string")), r"\s+", "")
+    return df.withColumn(
+        out_col,
+        when(trim(col(source_col).cast("string")) == "", lit(None)).otherwise(compacted),
+    )
+
+
+def coalesce_columns(df: DataFrame, source_cols: List[str], out_col: str) -> DataFrame:
+    """
+    Coalesce the first non-null source column into out_col.
+    Missing source columns are ignored.
+    """
+    usable = [col(c) for c in source_cols if c in df.columns]
+    if not usable:
+        return df
+    return df.withColumn(out_col, coalesce(*usable))
 
 
 def make_county_fips_from_state_county_codes(

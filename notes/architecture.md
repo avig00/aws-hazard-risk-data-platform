@@ -7,7 +7,7 @@ This document describes the full architecture of the project, from ingestion to 
 ## 1. High-Level Data Flow
 
 Raw Data → Bronze (S3) → Silver (Curated) → Gold (Analytics & ML)  
-Glue Jobs (PySpark) are orchestrated using MWAA/Airflow. Terraform provisions all infra.
+Glue Jobs (PySpark) are orchestrated using Step Functions. Terraform provisions all infra.
 
 ---
 

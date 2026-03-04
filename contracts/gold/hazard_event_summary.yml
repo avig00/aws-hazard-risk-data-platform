@@ -19,3 +19,4 @@ columns:
 checks:
   - sql/quality/gold/05_hazard_event_summary_uniqueness.sql
   - sql/quality/gold/06_hazard_event_summary_nonnegative.sql
+  - src/sql/validations/gold/hazard_event_summary__county_fips_canonical.sql

@@ -26,8 +26,10 @@ noaa_county_year AS (
         ELSE 0.0
       END
     ) AS noaa_avg_property_damage
-  FROM silver_hazard_cleaned.noaa_events_clean
+  FROM {{athena_db_silver}}.noaa_events_clean
   WHERE county_fips IS NOT NULL AND LENGTH(TRIM(county_fips)) = 5
+    AND substr(TRIM(county_fips), 1, 2) NOT IN ('00', '03')
+    AND substr(TRIM(county_fips), 3, 3) <> '000'
     AND year IS NOT NULL
   GROUP BY 1, 2
 ),
@@ -40,7 +42,7 @@ fema_claims_county_year AS (
       disasternumber,
       TRIM(state) AS state,
       CAST(fydeclared AS BIGINT) AS year
-    FROM silver_hazard_cleaned.fema_disaster_declarations_clean
+    FROM {{athena_db_silver}}.fema_disaster_declarations_clean
     WHERE disasternumber IS NOT NULL
       AND state IS NOT NULL AND TRIM(state) <> ''
       AND fydeclared IS NOT NULL
@@ -60,7 +62,7 @@ fema_claims_county_year AS (
       CAST(COALESCE(rentalamount, 0.0) AS DOUBLE) AS rentalamount,
       CAST(COALESCE(otherneedsamount, 0.0) AS DOUBLE) AS otherneedsamount,
       CAST(COALESCE(totalinspected, 0) AS DOUBLE) AS totalinspected
-    FROM silver_hazard_cleaned.fema_claims_clean
+    FROM {{athena_db_silver}}.fema_claims_clean
     WHERE disasternumber IS NOT NULL
       AND state IS NOT NULL AND TRIM(state) <> ''
       AND zipcode IS NOT NULL
@@ -71,7 +73,7 @@ fema_claims_county_year AS (
       TRIM(county_fips) AS county_fips,
       CAST(year AS BIGINT) AS year,
       CAST(tot_ratio AS DOUBLE) AS tot_ratio
-    FROM silver_hazard_cleaned.zip2county_xwalk_clean
+    FROM {{athena_db_silver}}.zip2county_xwalk_clean
     WHERE year BETWEEN '2010' AND '2023'
       AND county_fips IS NOT NULL AND LENGTH(TRIM(county_fips)) = 5
       -- Basic FIPS sanity (avoid placeholder/invalid)
@@ -109,8 +111,10 @@ nri_county AS (
     CAST(eal_score  AS DOUBLE) AS nri_eal_score,
     CAST(sovi_score AS DOUBLE) AS nri_sovi_score,
     CAST(resl_score AS DOUBLE) AS nri_resl_score
-  FROM silver_hazard_cleaned.nri_scores_clean
+  FROM {{athena_db_silver}}.nri_scores_clean
   WHERE county_fips IS NOT NULL AND LENGTH(TRIM(county_fips)) = 5
+    AND substr(TRIM(county_fips), 1, 2) NOT IN ('00', '03')
+    AND substr(TRIM(county_fips), 3, 3) <> '000'
 ),
 
 -- Census latest ACS per county (assumes census_clean has these output columns + acs_year + county_fips)
@@ -131,8 +135,10 @@ census_latest AS (
       CAST(graduate_degree AS BIGINT) AS graduate_degree,
       CAST(acs_year AS INT) AS census_acs_year,
       ROW_NUMBER() OVER (PARTITION BY TRIM(county_fips) ORDER BY CAST(acs_year AS INT) DESC) AS rn
-    FROM silver_hazard_cleaned.census_clean
+    FROM {{athena_db_silver}}.census_clean
     WHERE county_fips IS NOT NULL AND LENGTH(TRIM(county_fips)) = 5
+      AND substr(TRIM(county_fips), 1, 2) NOT IN ('00', '03')
+      AND substr(TRIM(county_fips), 3, 3) <> '000'
       AND acs_year IS NOT NULL
   ) t
   WHERE rn = 1

@@ -5,7 +5,7 @@
 
 CREATE TABLE {{athena_db_gold}}.risk_feature_mart__{{run_ds_nodash}}
 WITH (
-  external_location = 's3://{{bucket}}/hazard/gold/risk_feature_mart/run_dt={{run_ds}}/',
+  external_location = 's3://{{bucket}}/{{gold_prefix_root}}/risk_feature_mart/run_dt={{run_ds}}/',
   format = 'PARQUET',
   parquet_compression = 'SNAPPY'
 ) AS

@@ -33,9 +33,9 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
 
         "quality": {
           "runs": [
-            {"layer": "bronze", "suite_name": "noaa_details", "sql_dir": "sql/validations/bronze", "database": "bronze_hazard_raw"},
-            {"layer": "silver", "suite_name": "noaa_clean", "sql_dir": "sql/validations/silver", "database": "silver_hazard_cleaned"},
-            {"layer": "gold",  "suite_name": "gold_marts", "sql_dir": "sql/validations/gold", "database": "gold_hazard"}
+            {"layer": "bronze", "suite_name": "noaa_details", "sql_dir": "src/sql/validations/bronze", "database": "bronze_hazard_raw"},
+            {"layer": "silver", "suite_name": "noaa_clean", "sql_dir": "src/sql/validations/silver", "database": "silver_hazard_cleaned"},
+            {"layer": "gold",  "suite_name": "gold_marts", "sql_dir": "src/sql/validations/gold", "database": "gold_hazard"}
           ]
         }
       }
@@ -63,9 +63,9 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
     # (You can extend later without changing handler logic.)
     if not runs:
         runs = [
-            {"layer": "bronze", "suite_name": "noaa_events_raw", "sql_dir": "sql/validations/bronze", "database": bronze_db},
-            {"layer": "silver", "suite_name": "noaa_events_clean", "sql_dir": "sql/validations/silver", "database": silver_db},
-            {"layer": "gold", "suite_name": "gold_marts", "sql_dir": "sql/validations/gold", "database": gold_db},
+            {"layer": "bronze", "suite_name": "noaa_events_raw", "sql_dir": "src/sql/validations/bronze", "database": bronze_db},
+            {"layer": "silver", "suite_name": "noaa_events_clean", "sql_dir": "src/sql/validations/silver", "database": silver_db},
+            {"layer": "gold", "suite_name": "gold_marts", "sql_dir": "src/sql/validations/gold", "database": gold_db},
         ]
 
     reports: List[Dict[str, Any]] = []
@@ -91,6 +91,14 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
             default_severity="blocking",
             severities=severities,
             descriptions=descriptions,
+            template_vars={
+                "athena_db_bronze": bronze_db,
+                "athena_db_silver": silver_db,
+                "athena_db_gold": gold_db,
+                "validation_table_hazard_event_summary": f"{gold_db}.hazard_event_summary_current",
+                "validation_table_risk_feature_mart": f"{gold_db}.risk_feature_mart_current",
+                "validation_table_county_year_universe": f"{gold_db}.county_year_universe",
+            },
         )
 
         res = agent.validate(ctx, database=database, suite_name=f"{layer}__{suite_name}", checks=checks)

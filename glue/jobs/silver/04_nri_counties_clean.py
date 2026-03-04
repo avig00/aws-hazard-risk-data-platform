@@ -30,11 +30,13 @@ from pyspark.context import SparkContext
 from awsglue.context import GlueContext
 from awsglue.job import Job
 
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, trim, when
 
 from silver_utils import (
     normalize_columns,
+    make_county_fips_from_state_county_codes,
     standardize_county_fips,
+    apply_basic_county_fips_sanity,
     dedupe,
     df_rowcount,
     null_rates,
@@ -54,24 +56,39 @@ job.init(args["JOB_NAME"], args)
 
 src_path = f"s3://{bucket}/{bronze_prefix}/nri/counties/"
 out_path = f"s3://{bucket}/{silver_prefix}/nri_scores_clean/"
+unresolved_path = f"s3://{bucket}/{silver_prefix}/nri_scores_clean_unresolved_county_fips/"
 
 df_bronze = spark.read.option("header", "true").csv(src_path)
 df = normalize_columns(df_bronze)
 
 bronze_count = df_rowcount(df)
 
-# stcofips is typically already a 5-digit county identifier
+# stcofips is typically already a 5-digit county identifier.
+# If it exists in the source schema, use it exclusively and quarantine blanks
+# instead of silently falling back to potentially malformed concatenation.
 if "stcofips" in df.columns:
-    df = df.withColumn("county_fips", col("stcofips").cast("string"))
+    df = df.withColumn(
+        "county_fips",
+        when(trim(col("stcofips").cast("string")) == "", None).otherwise(col("stcofips").cast("string")),
+    )
 elif "statefips" in df.columns and "countyfips" in df.columns:
-    df = df.withColumn("county_fips", (col("statefips").cast("string") + col("countyfips").cast("string")))
+    df = make_county_fips_from_state_county_codes(df, "statefips", "countyfips", "county_fips")
+else:
+    raise ValueError("NRI county file is missing stcofips and state/county fallback fields.")
 
 df = standardize_county_fips(df, "county_fips")
 df = dedupe(df, ["county_fips"])
 
-silver_count = df_rowcount(df)
-nr = null_rates(df, ["county_fips", "nri_id", "risk_score"])
-log_validation_summary("nri_scores_clean", bronze_count, silver_count, nr)
+df_valid = apply_basic_county_fips_sanity(df, "county_fips")
+valid_keys = df_valid.select("county_fips").dropDuplicates(["county_fips"])
+df_unresolved = df.join(valid_keys, "county_fips", "left_anti")
 
-df.write.mode("overwrite").parquet(out_path)
+silver_count = df_rowcount(df_valid)
+unresolved_count = df_rowcount(df_unresolved)
+nr = null_rates(df_valid, ["county_fips", "nri_id", "risk_score"])
+log_validation_summary("nri_scores_clean", bronze_count, silver_count, nr)
+print(f"[VALIDATION] dataset=nri_scores_clean unresolved_rows={unresolved_count}")
+
+df_valid.write.mode("overwrite").parquet(out_path)
+df_unresolved.write.mode("overwrite").parquet(unresolved_path)
 job.commit()

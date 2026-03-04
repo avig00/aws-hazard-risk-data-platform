@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Optional
 
+from ops.sql_templates import render_sql
+
 
 def load_sql(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip().rstrip(";")
@@ -22,6 +24,7 @@ def load_checks(
     default_severity: str = "blocking",
     severities: Optional[Dict[str, str]] = None,
     descriptions: Optional[Dict[str, str]] = None,
+    template_vars: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Dict[str, str]]:
     """
     Returns the dict shape expected by QualityAgent.validate():
@@ -34,9 +37,12 @@ def load_checks(
     desc = descriptions or {}
 
     checks: Dict[str, Dict[str, str]] = {}
+    render_vars = template_vars or {}
+
     for name, sql in suite_sql.items():
+        rendered_sql = render_sql(sql, render_vars, strict=False) if render_vars else sql
         checks[name] = {
-            "sql": sql,
+            "sql": rendered_sql,
             "severity": sev.get(name, default_severity),
         }
         if name in desc:

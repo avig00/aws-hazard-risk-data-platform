@@ -10,8 +10,9 @@ from agents.base import AgentContext
 from agents.catalog_agent import CatalogAgent
 from agents.gold_mart_agent import GoldMartAgent
 from agents.quality_agent import QualityAgent
-from ops.config import ATHENA_DB_GOLD, PLATFORM_S3_BUCKET
+from ops.config import ATHENA_DB_GOLD, ATHENA_DB_SILVER, PLATFORM_S3_BUCKET
 from ops.sql_templates import load_sql_file, render_sql
+from ops.validators import load_checks
 
 
 def _now_yyyymmdd() -> str:
@@ -60,6 +61,8 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
 
     ctx = AgentContext(run_id=run_id, dag=dag, dataset=None, layer="gold", mode=mode)
     gold_db = event.get("athena_db_gold") or ATHENA_DB_GOLD
+    silver_db = event.get("athena_db_silver") or ATHENA_DB_SILVER
+    gold_prefix_root = (event.get("gold_prefix_root") or "hazard/gold").strip().strip("/")
 
     required_inputs = event.get("silver_required_inputs") or []
     gold_agent.precheck_silver_health(ctx, required_inputs)
@@ -78,6 +81,8 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
         "run_ds_nodash": run_dt.replace("-", ""),
         # Ensures CREATE/REPLACE VIEW is created in the intended Athena DB (e.g., gold_hazard)
         "athena_db_gold": gold_db,
+        "athena_db_silver": silver_db,
+        "gold_prefix_root": gold_prefix_root,
     }
 
     sql_paths = {
@@ -117,9 +122,9 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
         )
         builds.append(drop_res)
 
-        # Your CTAS writes to: s3://{bucket}/hazard/gold/{mart}/run_dt={run_dt}/
+        # Your CTAS writes to: s3://{bucket}/{gold_prefix_root}/{mart}/run_dt={run_dt}/
         # If that prefix already exists, Athena fails with HIVE_PATH_ALREADY_EXISTS.
-        gold_prefix = f"hazard/gold/{mart}/run_dt={run_dt}/"
+        gold_prefix = f"{gold_prefix_root}/{mart}/run_dt={run_dt}/"
         deleted = _delete_s3_prefix(PLATFORM_S3_BUCKET, gold_prefix)
         gold_agent.log(
             ctx,
@@ -136,6 +141,21 @@ def handler(event: Dict[str, Any], aws_context) -> Dict[str, Any]:
 
         # Validate BEFORE promoting the *_current view
         checks = ((event.get("gold_validation_checks") or {}).get(mart)) or {}
+        if not checks:
+            # Default to the bundled validation suite filtered to this mart prefix.
+            all_gold_checks = load_checks(
+                "src/sql/validations/gold",
+                default_severity="blocking",
+                template_vars={
+                    "athena_db_gold": gold_db,
+                    "athena_db_silver": silver_db,
+                    "validation_table_hazard_event_summary": f"{gold_db}.hazard_event_summary__{run_dt.replace('-', '')}",
+                    "validation_table_risk_feature_mart": f"{gold_db}.risk_feature_mart__{run_dt.replace('-', '')}",
+                    "validation_table_county_year_universe": f"{gold_db}.county_year_universe",
+                },
+            )
+            prefix = f"{mart}__"
+            checks = {name: spec for name, spec in all_gold_checks.items() if name.startswith(prefix)}
         suite_name = f"validate_{mart}"
         q = quality_agent.validate(ctx, database=gold_db, suite_name=suite_name, checks=checks)
 

@@ -5,7 +5,7 @@
 SELECT 1 AS fail
 WHERE EXISTS (
   SELECT 1
-  FROM gold_hazard.risk_feature_mart_current
+  FROM {{validation_table_risk_feature_mart}}
   WHERE CAST(year AS BIGINT) < 2010
      OR CAST(year AS BIGINT) > 2023
 );

@@ -59,3 +59,4 @@ checks:
   - sql/quality/gold/11_fema_claims_county_year_nonnegative.sql
   - sql/quality/gold/12_fema_claims_join_coverage.sql
   - sql/quality/gold/13_nri_parse_sanity.sql
+  - src/sql/validations/gold/risk_feature_mart__county_fips_canonical.sql
