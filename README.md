@@ -39,6 +39,25 @@ Athena Database: `gold_hazard`
 This production-deployed Streamlit application demonstrates the Gold `_current`
 views in action.
 
+## App Preview
+
+For a stronger GitHub presentation, add a checked-in screenshot or short GIF
+directly under this section.
+
+Recommended repo paths:
+
+- `docs/assets/risk-explorer-screenshot.png`
+- `docs/assets/risk-explorer-demo.gif`
+
+Recommended embed patterns:
+
+- Screenshot: `![Risk Explorer screenshot](docs/assets/risk-explorer-screenshot.png)`
+- Screencast/GIF: `![Risk Explorer demo](docs/assets/risk-explorer-demo.gif)`
+
+Prefer local repo assets over external links so the README renders reliably in
+GitHub, forks, and portfolio reviews. See `docs/assets/README.md` for the
+intended asset location and filenames.
+
 It supports:
 
 - Structural vs realized risk analysis
@@ -231,6 +250,17 @@ What changes operationally:
 
 This section is intended as an equivalent reference architecture, not a
 replacement for the AWS implementation in this repository.
+
+---
+
+# Runtime Notes
+
+The active production Gold build path is the CTAS-based runtime under
+`src/sql/gold_ctas`, executed by the Lambda orchestration layer.
+
+The older SQL under `sql/gold` is retained as a legacy/manual reference path
+for comparison and rollback context, but it is not the primary production
+execution path.
 
 ---
 
