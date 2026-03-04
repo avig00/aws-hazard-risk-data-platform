@@ -203,6 +203,54 @@ flowchart LR
     A --> BI
 ```
 
+## Databricks-Native Equivalent Architecture
+
+This repository is implemented with AWS-native services first. If the same
+platform were deployed in a Databricks-native stack, the operating model would
+stay the same while compute orchestration and query serving would shift.
+
+Equivalent component mapping:
+
+- **Terraform IaC** -> **Terraform + Databricks provider**
+- **AWS Step Functions** -> **Databricks Workflows**
+- **Lambda Agents** -> **Databricks Jobs / notebooks / Python tasks**
+- **S3 Bronze / Silver / Gold** -> **Delta Lake tables (Unity Catalog) on cloud object storage**
+- **Athena** -> **Databricks SQL Warehouses**
+- **BI / ML / Agents** -> **BI tools, notebooks, and model/agent consumers querying Delta tables**
+
+```mermaid
+flowchart LR
+    TF[Terraform IaC]
+    WF[Databricks Workflows]
+    JB[Jobs / Notebooks / Python Tasks]
+    DL[Delta Lake<br/>Bronze / Silver / Gold]
+    SQLW[Databricks SQL Warehouses]
+    BI[BI / ML / Apps]
+
+    TF --> WF
+    WF --> JB
+    JB --> DL
+    DL --> SQLW
+    SQLW --> BI
+```
+
+What stays the same:
+
+- Medallion architecture (Bronze, Silver, Gold)
+- Deterministic transformations and validation gates
+- Versioned promotion workflow
+- Stable consumer-facing `_current` views
+
+What changes operationally:
+
+- Transformations run on Spark/Delta workloads instead of Lambda + Athena CTAS
+- Serving shifts from Athena scans to Databricks SQL warehouse execution
+- Governance and table access move into Unity Catalog models
+- Cost controls center on cluster/job sizing and SQL warehouse policies
+
+This section is intended as an equivalent reference architecture, not a
+replacement for the AWS implementation in this repository.
+
 ## Snowflake-Native Equivalent Architecture
 
 This repository is implemented with AWS-native services first. If the same
