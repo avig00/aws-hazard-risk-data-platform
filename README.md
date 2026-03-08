@@ -1,5 +1,27 @@
 # AWS Hazard & Risk Data Platform
 
+## TLDR
+
+Production-style AWS data platform for climate risk analytics.
+
+- Integrates four national hazard datasets (NOAA, FEMA, Census, NRI)
+- Builds ML-ready county-level feature marts across 3,000+ U.S. counties
+- Uses validation-gated medallion architecture (Bronze -> Silver -> Gold)
+- Deploys a live Streamlit risk analytics application
+- Designed for reproducible underwriting research and catastrophe modeling
+
+## Why This Matters
+
+Insurance and catastrophe modeling teams often rely on fragmented datasets that
+produce inconsistent results when combined.
+
+This platform demonstrates how modern cloud data architecture can:
+
+- Standardize hazard data across multiple sources
+- Enforce reproducible geographic analytics
+- Support both BI analytics and ML modeling
+- Provide safe, validation-gated data pipelines
+
 ## Overview
 
 Insurance carriers, catastrophe modelers, and climate risk teams rely on
@@ -102,6 +124,52 @@ The app enforces:
 
 This ensures safe, cost-aware, and reproducible analytics.
 
+# Platform Scale
+
+The system processes national-scale hazard data:
+
+- 3,000+ U.S. counties
+- 13 years of disaster history (2010–2023)
+- 4 integrated public hazard datasets
+- Millions of hazard event records
+- County-year analytical grain
+
+The platform produces deterministic county-level feature tables suitable for:
+
+- Catastrophe risk analysis
+- Underwriting research
+- ML-based risk prediction
+
+# Technology Stack
+
+Cloud Infrastructure
+
+- AWS S3
+- AWS Glue
+- AWS Athena
+- AWS Lambda
+- AWS Step Functions
+
+Infrastructure as Code
+
+- Terraform
+
+Data Engineering
+
+- SQL
+- Python
+
+Architecture
+
+- Medallion data platform
+- Validation-gated promotion workflow
+- Versioned analytical tables
+
+Application Layer
+
+- Streamlit Risk Explorer
+- PyDeck geospatial visualization
+
 # Data Sources & Geographic Standardization
 
 This platform integrates multiple public datasets and standardizes them
@@ -181,9 +249,22 @@ prior to aggregation into Gold.
 - **Role in Platform:**  
   - Powers the `gold_hazard.county_centroids_current` view  
   - Enables county-level geospatial visualization in the Streamlit Risk Explorer map  
-  - Serves as the canonical geographic reference layer for FIPS normalization and joins across hazard datasets  
+- Serves as the canonical geographic reference layer for FIPS normalization and joins across hazard datasets  
 
 ---
+
+# Architecture Overview
+
+The platform transforms fragmented public hazard datasets into a reproducible
+analytics and ML foundation.
+
+Data flow:
+
+Hazard Data Sources (NOAA, FEMA, Census, NRI)  
+-> AWS ingestion pipelines (S3 + Glue + Step Functions)  
+-> Medallion data platform (Bronze -> Silver -> Gold)  
+-> Analytics warehouse (Athena)  
+-> Applications & ML (Streamlit Risk Explorer + downstream models)
 
 # System Architecture
 
@@ -472,6 +553,25 @@ LIMIT 25;
 
 ---
 
+# ML & AI Applications
+
+The Gold feature marts are designed to support downstream ML workflows such as:
+
+- Flood risk scoring models
+- Disaster impact prediction
+- Regional insurance exposure analysis
+- Hazard frequency forecasting
+- County-level risk clustering
+
+These feature tables can be consumed by ML frameworks such as:
+
+- SageMaker
+- PyTorch / Scikit-learn pipelines
+- Snowpark ML
+- Databricks ML workflows
+
+---
+
 # Real-World Use Case
 
 ## County-Level Underwriting Research
@@ -547,7 +647,7 @@ Before closing a deployment, the following validations are performed:
 
 These checks confirm the system is stable, reproducible, and production-safe.
 
-# Design Principles
+# Engineering Design Goals
 
 -   Explicit grains over implicit joins
 -   Deterministic builds
