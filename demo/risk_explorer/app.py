@@ -31,6 +31,9 @@ class AppConfig:
     map_max_points_cap: int
 
 
+YEAR_OPTIONS = list(range(2010, 2024))
+
+
 def _get_env(name: str, default: Optional[str] = None) -> Optional[str]:
     v = os.getenv(name)
     return v if v not in (None, "") else default
@@ -745,16 +748,9 @@ with st.sidebar:
         "Athena timeout (seconds)", min_value=30, max_value=240, value=120, step=10, key="timeout_seconds"
     )
 
-    try:
-        years = load_years_cached(cfg.region, cfg.database, cfg.workgroup, cfg.output_s3, timeout_seconds)
-    except Exception as e:
-        st.error("Could not load available years from Athena.")
-        st.code(str(e))
-        st.stop()
-
-    if not years:
-        st.error("No years found in `risk_feature_mart_current`. Check Gold views and database setting.")
-        st.stop()
+    # Do not block initial page load on a live Athena query.
+    # The mart contract already enforces a fixed 2010-2023 year window.
+    years = YEAR_OPTIONS
 
     year = st.selectbox("Year", years, index=len(years) - 1, key="year_select")
 
