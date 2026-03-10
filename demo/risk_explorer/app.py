@@ -402,6 +402,12 @@ def inject_accent_styles() -> None:
     st.markdown(
         f"""
         <style>
+        :root {{
+            --amber-main: {STREAMLIT_AMBER};
+            --amber-bg: {STREAMLIT_AMBER_BG};
+            --amber-border: {STREAMLIT_AMBER_BORDER};
+            --amber-strong-bg: rgba(245, 158, 11, 0.22);
+        }}
         div[data-testid="stMarkdownContainer"] code,
         div[data-testid="stCaptionContainer"] code,
         p code,
@@ -444,6 +450,63 @@ def inject_accent_styles() -> None:
             letter-spacing: 0.04em;
             text-transform: uppercase;
             margin-bottom: 0.1rem;
+        }}
+        div[data-testid="stSlider"] [role="slider"] {{
+            background: var(--amber-main) !important;
+            border-color: var(--amber-main) !important;
+        }}
+        div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child {{
+            background: var(--amber-main) !important;
+        }}
+        div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:nth-child(2) {{
+            background: rgba(245, 158, 11, 0.28) !important;
+        }}
+        div[data-testid="stSlider"] small,
+        div[data-testid="stSlider"] label,
+        div[data-testid="stSlider"] span {{
+            accent-color: var(--amber-main) !important;
+        }}
+        div[data-testid="stCheckbox"] input,
+        div[data-testid="stToggle"] input {{
+            accent-color: var(--amber-main) !important;
+        }}
+        div[data-testid="stToggle"] div[role="switch"][aria-checked="true"] {{
+            background-color: var(--amber-main) !important;
+        }}
+        div[data-testid="stToggle"] div[role="switch"][aria-checked="false"] {{
+            background-color: rgba(245, 158, 11, 0.22) !important;
+        }}
+        div[data-testid="stButton"] > button,
+        div[data-testid="stDownloadButton"] > button {{
+            border: 1px solid rgba(245, 158, 11, 0.30) !important;
+            color: #f3f4f6 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+        }}
+        div[data-testid="stButton"] > button:hover,
+        div[data-testid="stDownloadButton"] > button:hover {{
+            border-color: var(--amber-main) !important;
+            color: #111827 !important;
+            background: rgba(245, 158, 11, 0.92) !important;
+        }}
+        div[data-testid="stButton"] > button:active,
+        div[data-testid="stDownloadButton"] > button:active {{
+            border-color: var(--amber-main) !important;
+            color: #111827 !important;
+            background: rgba(245, 158, 11, 1) !important;
+        }}
+        div[data-testid="stButton"] > button[kind="primary"] {{
+            border: 1px solid rgba(245, 158, 11, 0.30) !important;
+            color: var(--amber-main) !important;
+            background: rgba(245, 158, 11, 0.06) !important;
+        }}
+        div[data-testid="stButton"] > button[kind="primary"]:hover,
+        div[data-testid="stButton"] > button[kind="primary"]:focus,
+        div[data-testid="stButton"] > button[kind="primary"]:active {{
+            border-color: var(--amber-main) !important;
+            color: #111827 !important;
+            background: rgba(245, 158, 11, 0.96) !important;
         }}
         </style>
         """,
