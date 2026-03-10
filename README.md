@@ -284,28 +284,29 @@ flowchart LR
     A --> BI
 ```
 
-## Databricks-Native Equivalent Architecture
+## Azure Databricks Equivalent Architecture
 
 This repository is implemented with AWS-native services first. If the same
-platform were deployed in a Databricks-native stack, the operating model would
-stay the same while compute orchestration and query serving would shift.
+platform were deployed in an Azure Databricks-native stack, the operating
+model would stay the same while compute orchestration, governance, and query
+serving would shift.
 
 Equivalent component mapping:
 
-- **Terraform IaC** -> **Terraform + Databricks provider**
-- **AWS Step Functions** -> **Databricks Workflows**
-- **Lambda Agents** -> **Databricks Jobs / notebooks / Python tasks**
-- **S3 Bronze / Silver / Gold** -> **Delta Lake tables (Unity Catalog) on cloud object storage**
-- **Athena** -> **Databricks SQL Warehouses**
+- **Terraform IaC** -> **Terraform + Azure Databricks provider**
+- **AWS Step Functions** -> **Azure Databricks Workflows**
+- **Lambda Agents** -> **Azure Databricks Jobs / notebooks / Python tasks**
+- **S3 Bronze / Silver / Gold** -> **Delta Lake tables in Unity Catalog backed by ADLS**
+- **Athena** -> **Azure Databricks SQL Warehouses**
 - **BI / ML / Agents** -> **BI tools, notebooks, and model/agent consumers querying Delta tables**
 
 ```mermaid
 flowchart LR
     TF[Terraform IaC]
-    WF[Databricks Workflows]
+    WF[Azure Databricks Workflows]
     JB[Jobs / Notebooks / Python Tasks]
-    DL[Delta Lake<br/>Bronze / Silver / Gold]
-    SQLW[Databricks SQL Warehouses]
+    DL[Delta Lake on ADLS<br/>Bronze / Silver / Gold]
+    SQLW[Azure Databricks SQL Warehouses]
     BI[BI / ML / Apps]
 
     TF --> WF
@@ -325,57 +326,9 @@ What stays the same:
 What changes operationally:
 
 - Transformations run on Spark/Delta workloads instead of Lambda + Athena CTAS
-- Serving shifts from Athena scans to Databricks SQL warehouse execution
+- Serving shifts from Athena scans to Azure Databricks SQL warehouse execution
 - Governance and table access move into Unity Catalog models
 - Cost controls center on cluster/job sizing and SQL warehouse policies
-
-This section is intended as an equivalent reference architecture, not a
-replacement for the AWS implementation in this repository.
-
-## Snowflake-Native Equivalent Architecture
-
-This repository is implemented with AWS-native services first. If the same
-platform were deployed in a Snowflake-native stack, the operating model would
-stay the same while the compute and storage layers would shift.
-
-Equivalent component mapping:
-
-- **Terraform IaC** -> **Terraform + Snowflake provider**
-- **AWS Step Functions** -> **Snowflake Tasks** (or an external orchestrator driving Snowflake)
-- **Lambda Agents** -> **Snowpark Python, stored procedures, or task-invoked procedures**
-- **S3 Bronze / Silver / Gold** -> **Snowflake databases, schemas, stages, and managed tables**
-- **Athena** -> **Snowflake virtual warehouses**
-- **BI / ML / Agents** -> **BI tools, notebooks, apps, and downstream consumers querying Snowflake**
-
-```mermaid
-flowchart LR
-    TF[Terraform IaC]
-    ST[Snowflake Tasks]
-    SP[Snowpark / Stored Procedures]
-    SN[Snowflake<br/>Bronze / Silver / Gold]
-    WH[Virtual Warehouses]
-    BI[BI / ML / Apps]
-
-    TF --> ST
-    ST --> SP
-    SP --> SN
-    SN --> WH
-    WH --> BI
-```
-
-What stays the same:
-
-- Medallion architecture (Bronze, Silver, Gold)
-- Deterministic transformations and validation gates
-- Versioned promotion workflow
-- Stable consumer-facing `_current` views
-
-What changes operationally:
-
-- Storage becomes Snowflake-managed instead of S3-backed query-over-files
-- Query serving shifts from Athena scans to Snowflake warehouse compute
-- Orchestration becomes task/procedure-centric instead of Step Functions + Lambda
-- Cost controls focus on warehouse sizing, auto-suspend, and workload isolation
 
 This section is intended as an equivalent reference architecture, not a
 replacement for the AWS implementation in this repository.
@@ -567,8 +520,8 @@ These feature tables can be consumed by ML frameworks such as:
 
 - SageMaker
 - PyTorch / Scikit-learn pipelines
-- Snowpark ML
-- Databricks ML workflows
+- Azure ML
+- Azure Databricks ML workflows
 
 ---
 
