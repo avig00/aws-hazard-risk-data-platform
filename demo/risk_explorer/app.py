@@ -388,7 +388,11 @@ def sql_ranked_risk_with_centroids(inner_sql: str) -> str:
 # =============================================================================
 # UI helpers
 # =============================================================================
-STREAMLIT_RED = "#ff4b4b"
+STREAMLIT_AMBER = "#f59e0b"
+STREAMLIT_AMBER_RGB = (245, 158, 11)
+STREAMLIT_AMBER_BG = "rgba(245, 158, 11, 0.12)"
+STREAMLIT_AMBER_BORDER = "rgba(245, 158, 11, 0.22)"
+STREAMLIT_ORANGE_HIGHLIGHT = "#f97316"
 
 
 def inject_accent_styles() -> None:
@@ -399,19 +403,19 @@ def inject_accent_styles() -> None:
         div[data-testid="stCaptionContainer"] code,
         p code,
         li code {{
-            color: {STREAMLIT_RED} !important;
-            background-color: rgba(255, 75, 75, 0.12) !important;
-            border: 1px solid rgba(255, 75, 75, 0.18);
+            color: {STREAMLIT_AMBER} !important;
+            background-color: {STREAMLIT_AMBER_BG} !important;
+            border: 1px solid rgba(245, 158, 11, 0.18);
         }}
         .hero-insight {{
-            border: 1px solid rgba(255, 75, 75, 0.22);
+            border: 1px solid {STREAMLIT_AMBER_BORDER};
             border-radius: 14px;
             padding: 1rem 1.1rem;
             margin: 0.35rem 0 1rem 0;
-            background: linear-gradient(180deg, rgba(255, 75, 75, 0.08), rgba(255, 75, 75, 0.03));
+            background: linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.04));
         }}
         .hero-insight .eyebrow {{
-            color: {STREAMLIT_RED};
+            color: {STREAMLIT_AMBER};
             font-size: 0.8rem;
             font-weight: 700;
             letter-spacing: 0.04em;
@@ -431,7 +435,7 @@ def inject_accent_styles() -> None:
             padding-left: 1.15rem;
         }}
         .panel-label {{
-            color: {STREAMLIT_RED};
+            color: {STREAMLIT_AMBER};
             font-size: 0.8rem;
             font-weight: 700;
             letter-spacing: 0.04em;
@@ -536,7 +540,7 @@ def line_chart(
         x=alt.X(f"{x}:Q", axis=fmt_year_axis()),
         y=alt.Y(f"{y}:Q", axis=alt.Axis(title=y_title)),
         tooltip=[alt.Tooltip(f"{x}:Q", format="d"), alt.Tooltip(f"{y}:Q")],
-        color=alt.value(STREAMLIT_RED),
+        color=alt.value(STREAMLIT_AMBER),
     )
     return base.properties(title=title, height=height).interactive()
 
@@ -567,7 +571,7 @@ def bar_chart(
         x=x_enc,
         y=y_enc,
         tooltip=[alt.Tooltip(f"{x}:N"), alt.Tooltip(f"{y}:Q")],
-        color=alt.value(STREAMLIT_RED),
+        color=alt.value(STREAMLIT_AMBER),
     )
     labels = alt.Chart(plot_df).mark_text(dy=-8, color="white").encode(
         x=x_enc,
@@ -1522,16 +1526,23 @@ with tab_year:
                     smax = float(sraw.max()) if len(sraw) else 0.0
                     df_map["_radius"] = 25000.0 if smax <= 0 else (2000.0 + 38000.0 * (sraw / smax)).astype(float)
 
-                # Build color scalar (simple normalization, no custom palette dependency)
+                # Build color scalar for an amber ramp so the map matches the app theme.
                 vraw = pd.to_numeric(df_map.get(metric), errors="coerce").fillna(0.0)
                 vmax = float(vraw.max()) if len(vraw) else 0.0
                 if vmax <= 0:
-                    df_map["_c"] = 120
+                    df_map["_intensity"] = 0.45
                 else:
-                    df_map["_c"] = (50 + 180 * (vraw / vmax)).clip(50, 230).astype(int)
+                    df_map["_intensity"] = (0.2 + 0.8 * (vraw / vmax)).clip(0.2, 1.0)
 
-                # RGBA list
-                df_map["_color"] = df_map["_c"].apply(lambda x: [int(x), 60, int(255 - min(int(x), 200)), 160])
+                # RGBA list using a dark-to-bright amber ramp for the base map theme.
+                df_map["_color"] = df_map["_intensity"].apply(
+                    lambda x: [
+                        int(110 + 135 * float(x)),
+                        int(74 + 84 * float(x)),
+                        int(12 + 18 * float(x)),
+                        175,
+                    ]
+                )
 
                 tooltip = {
                     "html": (
@@ -1567,7 +1578,7 @@ with tab_year:
                         data=df_sel,
                         get_position="[lon, lat]",
                         get_radius="_radius_sel",
-                        get_fill_color="[255, 165, 0, 220]",  # highlight: orange-ish
+                        get_fill_color="[249, 115, 22, 235]",
                         pickable=True,
                         stroked=True,
                         get_line_color="[0, 0, 0, 220]",
