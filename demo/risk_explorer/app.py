@@ -408,6 +408,9 @@ def inject_accent_styles() -> None:
             --amber-border: {STREAMLIT_AMBER_BORDER};
             --amber-strong-bg: rgba(245, 158, 11, 0.22);
         }}
+        html, body, [data-testid="stAppViewContainer"] {{
+            accent-color: var(--amber-main) !important;
+        }}
         div[data-testid="stMarkdownContainer"] code,
         div[data-testid="stCaptionContainer"] code,
         p code,
@@ -455,19 +458,27 @@ def inject_accent_styles() -> None:
             background: var(--amber-main) !important;
             border-color: var(--amber-main) !important;
         }}
+        div[data-testid="stSlider"] [data-baseweb="slider"] * {{
+            box-shadow: none !important;
+        }}
         div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child {{
             background: var(--amber-main) !important;
         }}
         div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:nth-child(2) {{
             background: rgba(245, 158, 11, 0.28) !important;
         }}
+        div[data-testid="stSlider"] [data-baseweb="input"] input,
+        div[data-testid="stSlider"] [data-baseweb="input"] span,
         div[data-testid="stSlider"] small,
         div[data-testid="stSlider"] label,
         div[data-testid="stSlider"] span {{
+            color: var(--amber-main) !important;
             accent-color: var(--amber-main) !important;
         }}
         div[data-testid="stCheckbox"] input,
-        div[data-testid="stToggle"] input {{
+        div[data-testid="stToggle"] input,
+        input[type="checkbox"],
+        input[type="radio"] {{
             accent-color: var(--amber-main) !important;
         }}
         div[data-testid="stToggle"] div[role="switch"][aria-checked="true"] {{
@@ -475,6 +486,37 @@ def inject_accent_styles() -> None:
         }}
         div[data-testid="stToggle"] div[role="switch"][aria-checked="false"] {{
             background-color: rgba(245, 158, 11, 0.22) !important;
+        }}
+        div[data-testid="stToggle"] div[role="switch"] > div {{
+            background-color: #f8fafc !important;
+        }}
+        label[data-baseweb="radio"] > div:first-of-type,
+        div[role="radiogroup"] label > div:first-of-type {{
+            border-color: rgba(245, 158, 11, 0.45) !important;
+        }}
+        label[data-baseweb="radio"] input:checked + div,
+        div[role="radiogroup"] input:checked + div {{
+            border-color: var(--amber-main) !important;
+            background-color: var(--amber-main) !important;
+        }}
+        label[data-baseweb="radio"] input:checked + div::after,
+        div[role="radiogroup"] input:checked + div::after {{
+            background-color: #111827 !important;
+        }}
+        div[data-testid="stExpander"] details {{
+            border-color: rgba(245, 158, 11, 0.26) !important;
+        }}
+        div[data-testid="stExpander"] details[open] {{
+            border-color: rgba(245, 158, 11, 0.55) !important;
+            box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.12) inset;
+        }}
+        div[data-testid="stExpander"] summary:hover,
+        div[data-testid="stExpander"] summary:focus {{
+            color: var(--amber-main) !important;
+        }}
+        div[data-testid="stExpander"] summary svg {{
+            color: var(--amber-main) !important;
+            fill: var(--amber-main) !important;
         }}
         div[data-testid="stButton"] > button,
         div[data-testid="stDownloadButton"] > button {{
