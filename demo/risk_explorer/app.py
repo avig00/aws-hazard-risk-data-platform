@@ -391,43 +391,30 @@ def sql_ranked_risk_with_centroids(inner_sql: str) -> str:
 # =============================================================================
 # UI helpers
 # =============================================================================
-STREAMLIT_AMBER = "#f59e0b"
-STREAMLIT_AMBER_RGB = (245, 158, 11)
-STREAMLIT_AMBER_BG = "rgba(245, 158, 11, 0.12)"
-STREAMLIT_AMBER_BORDER = "rgba(245, 158, 11, 0.22)"
-STREAMLIT_ORANGE_HIGHLIGHT = "#f97316"
+STREAMLIT_RED = "#ff4b4b"
 
 
 def inject_accent_styles() -> None:
     st.markdown(
         f"""
         <style>
-        :root {{
-            --amber-main: {STREAMLIT_AMBER};
-            --amber-bg: {STREAMLIT_AMBER_BG};
-            --amber-border: {STREAMLIT_AMBER_BORDER};
-            --amber-strong-bg: rgba(245, 158, 11, 0.22);
-        }}
-        html, body, [data-testid="stAppViewContainer"] {{
-            accent-color: var(--amber-main) !important;
-        }}
         div[data-testid="stMarkdownContainer"] code,
         div[data-testid="stCaptionContainer"] code,
         p code,
         li code {{
-            color: {STREAMLIT_AMBER} !important;
-            background-color: {STREAMLIT_AMBER_BG} !important;
-            border: 1px solid rgba(245, 158, 11, 0.18);
+            color: {STREAMLIT_RED} !important;
+            background-color: rgba(255, 75, 75, 0.12) !important;
+            border: 1px solid rgba(255, 75, 75, 0.18);
         }}
         .hero-insight {{
-            border: 1px solid {STREAMLIT_AMBER_BORDER};
+            border: 1px solid rgba(255, 75, 75, 0.22);
             border-radius: 14px;
             padding: 1rem 1.1rem;
             margin: 0.35rem 0 1rem 0;
-            background: linear-gradient(180deg, rgba(245, 158, 11, 0.12), rgba(245, 158, 11, 0.04));
+            background: linear-gradient(180deg, rgba(255, 75, 75, 0.08), rgba(255, 75, 75, 0.03));
         }}
         .hero-insight .eyebrow {{
-            color: {STREAMLIT_AMBER};
+            color: {STREAMLIT_RED};
             font-size: 0.8rem;
             font-weight: 700;
             letter-spacing: 0.04em;
@@ -447,108 +434,12 @@ def inject_accent_styles() -> None:
             padding-left: 1.15rem;
         }}
         .panel-label {{
-            color: {STREAMLIT_AMBER};
+            color: {STREAMLIT_RED};
             font-size: 0.8rem;
             font-weight: 700;
             letter-spacing: 0.04em;
             text-transform: uppercase;
             margin-bottom: 0.1rem;
-        }}
-        div[data-testid="stSlider"] [role="slider"] {{
-            background: var(--amber-main) !important;
-            border-color: var(--amber-main) !important;
-        }}
-        div[data-testid="stSlider"] [data-baseweb="slider"] * {{
-            box-shadow: none !important;
-        }}
-        div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:first-child {{
-            background: var(--amber-main) !important;
-        }}
-        div[data-testid="stSlider"] div[data-baseweb="slider"] > div > div:nth-child(2) {{
-            background: rgba(245, 158, 11, 0.28) !important;
-        }}
-        div[data-testid="stSlider"] [data-baseweb="input"] input,
-        div[data-testid="stSlider"] [data-baseweb="input"] span,
-        div[data-testid="stSlider"] small,
-        div[data-testid="stSlider"] label,
-        div[data-testid="stSlider"] span {{
-            color: var(--amber-main) !important;
-            accent-color: var(--amber-main) !important;
-        }}
-        div[data-testid="stCheckbox"] input,
-        div[data-testid="stToggle"] input,
-        input[type="checkbox"],
-        input[type="radio"] {{
-            accent-color: var(--amber-main) !important;
-        }}
-        div[data-testid="stToggle"] div[role="switch"][aria-checked="true"] {{
-            background-color: var(--amber-main) !important;
-        }}
-        div[data-testid="stToggle"] div[role="switch"][aria-checked="false"] {{
-            background-color: rgba(245, 158, 11, 0.22) !important;
-        }}
-        div[data-testid="stToggle"] div[role="switch"] > div {{
-            background-color: #f8fafc !important;
-        }}
-        label[data-baseweb="radio"] > div:first-of-type,
-        div[role="radiogroup"] label > div:first-of-type {{
-            border-color: rgba(245, 158, 11, 0.45) !important;
-        }}
-        label[data-baseweb="radio"] input:checked + div,
-        div[role="radiogroup"] input:checked + div {{
-            border-color: var(--amber-main) !important;
-            background-color: var(--amber-main) !important;
-        }}
-        label[data-baseweb="radio"] input:checked + div::after,
-        div[role="radiogroup"] input:checked + div::after {{
-            background-color: #111827 !important;
-        }}
-        div[data-testid="stExpander"] details {{
-            border-color: rgba(245, 158, 11, 0.26) !important;
-        }}
-        div[data-testid="stExpander"] details[open] {{
-            border-color: rgba(245, 158, 11, 0.55) !important;
-            box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.12) inset;
-        }}
-        div[data-testid="stExpander"] summary:hover,
-        div[data-testid="stExpander"] summary:focus {{
-            color: var(--amber-main) !important;
-        }}
-        div[data-testid="stExpander"] summary svg {{
-            color: var(--amber-main) !important;
-            fill: var(--amber-main) !important;
-        }}
-        div[data-testid="stButton"] > button,
-        div[data-testid="stDownloadButton"] > button {{
-            border: 1px solid rgba(245, 158, 11, 0.30) !important;
-            color: #f3f4f6 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-        }}
-        div[data-testid="stButton"] > button:hover,
-        div[data-testid="stDownloadButton"] > button:hover {{
-            border-color: var(--amber-main) !important;
-            color: #111827 !important;
-            background: rgba(245, 158, 11, 0.92) !important;
-        }}
-        div[data-testid="stButton"] > button:active,
-        div[data-testid="stDownloadButton"] > button:active {{
-            border-color: var(--amber-main) !important;
-            color: #111827 !important;
-            background: rgba(245, 158, 11, 1) !important;
-        }}
-        div[data-testid="stButton"] > button[kind="primary"] {{
-            border: 1px solid rgba(245, 158, 11, 0.30) !important;
-            color: var(--amber-main) !important;
-            background: rgba(245, 158, 11, 0.06) !important;
-        }}
-        div[data-testid="stButton"] > button[kind="primary"]:hover,
-        div[data-testid="stButton"] > button[kind="primary"]:focus,
-        div[data-testid="stButton"] > button[kind="primary"]:active {{
-            border-color: var(--amber-main) !important;
-            color: #111827 !important;
-            background: rgba(245, 158, 11, 0.96) !important;
         }}
         </style>
         """,
@@ -648,7 +539,7 @@ def line_chart(
         x=alt.X(f"{x}:Q", axis=fmt_year_axis()),
         y=alt.Y(f"{y}:Q", axis=alt.Axis(title=y_title)),
         tooltip=[alt.Tooltip(f"{x}:Q", format="d"), alt.Tooltip(f"{y}:Q")],
-        color=alt.value(STREAMLIT_AMBER),
+        color=alt.value(STREAMLIT_RED),
     )
     return base.properties(title=title, height=height).interactive()
 
@@ -679,7 +570,7 @@ def bar_chart(
         x=x_enc,
         y=y_enc,
         tooltip=[alt.Tooltip(f"{x}:N"), alt.Tooltip(f"{y}:Q")],
-        color=alt.value(STREAMLIT_AMBER),
+        color=alt.value(STREAMLIT_RED),
     )
     labels = alt.Chart(plot_df).mark_text(dy=-8, color="white").encode(
         x=x_enc,
@@ -1627,23 +1518,16 @@ with tab_year:
                     smax = float(sraw.max()) if len(sraw) else 0.0
                     df_map["_radius"] = 25000.0 if smax <= 0 else (2000.0 + 38000.0 * (sraw / smax)).astype(float)
 
-                # Build color scalar for an amber ramp so the map matches the app theme.
+                # Build color scalar using the app's default red-forward palette.
                 vraw = pd.to_numeric(df_map.get(metric), errors="coerce").fillna(0.0)
                 vmax = float(vraw.max()) if len(vraw) else 0.0
                 if vmax <= 0:
-                    df_map["_intensity"] = 0.45
+                    df_map["_c"] = 120
                 else:
-                    df_map["_intensity"] = (0.2 + 0.8 * (vraw / vmax)).clip(0.2, 1.0)
+                    df_map["_c"] = (50 + 180 * (vraw / vmax)).clip(50, 230).astype(int)
 
-                # RGBA list using a dark-to-bright amber ramp for the base map theme.
-                df_map["_color"] = df_map["_intensity"].apply(
-                    lambda x: [
-                        int(110 + 135 * float(x)),
-                        int(74 + 84 * float(x)),
-                        int(12 + 18 * float(x)),
-                        175,
-                    ]
-                )
+                # RGBA list
+                df_map["_color"] = df_map["_c"].apply(lambda x: [int(x), 60, int(255 - min(int(x), 200)), 160])
 
                 tooltip = {
                     "html": (
@@ -1679,7 +1563,7 @@ with tab_year:
                         data=df_sel,
                         get_position="[lon, lat]",
                         get_radius="_radius_sel",
-                        get_fill_color="[249, 115, 22, 235]",
+                        get_fill_color="[255, 165, 0, 220]",
                         pickable=True,
                         stroked=True,
                         get_line_color="[0, 0, 0, 220]",
