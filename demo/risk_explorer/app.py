@@ -502,6 +502,31 @@ def render_panel_label(text: str) -> None:
     st.markdown(f"<div class='panel-label'>{text}</div>", unsafe_allow_html=True)
 
 
+def render_map_color_scale(metric: str, values: pd.Series) -> None:
+    vals = pd.to_numeric(values, errors="coerce").dropna()
+    if vals.empty:
+        return
+
+    vmin = float(vals.min())
+    vmax = float(vals.max())
+    vmid = float(vals.quantile(0.5))
+    fmt = ".0f" if max(abs(vmin), abs(vmid), abs(vmax)) >= 100 else ".2f"
+
+    st.caption(f"Color scale for `{metric}`")
+    st.markdown(
+        """
+        <div style="margin:0.2rem 0 0.35rem 0;">
+          <div style="height:12px;border-radius:999px;background:linear-gradient(90deg, rgba(50,60,205,0.70) 0%, rgba(140,60,145,0.80) 50%, rgba(230,60,55,0.90) 100%);"></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    legend_cols = st.columns(3)
+    legend_cols[0].caption(f"Low: {format(vmin, fmt)}")
+    legend_cols[1].caption(f"Median: {format(vmid, fmt)}")
+    legend_cols[2].caption(f"High: {format(vmax, fmt)}")
+
+
 def normalize_county_fips(x: str) -> str:
     x = (x or "").strip()
     if not x:
@@ -775,7 +800,7 @@ with st.sidebar:
     c_run, c_reset, c_clear = st.columns([1, 1, 1])
 
     with c_run:
-        if st.button("Run Explorer", type="primary", key="run_btn"):
+        if st.button("Run Explorer", key="run_btn"):
             st.session_state["has_run"] = True
             st.session_state["last_year"] = int(year)
             st.session_state["last_county_fips"] = county_fips
@@ -1369,14 +1394,14 @@ with tab_year:
                 key="map_mode",
             )
 
-            metric = st.selectbox(
+            metric = st.radio(
                 "Map color metric",
                 ["nri_risk_score", "noaa_event_count", "fema_valid_registrations", "fema_total_damage"],
                 index=0,
                 key="map_metric",
             )
         with controls_b:
-            size_by = st.selectbox(
+            size_by = st.radio(
                 "Dot size by",
                 ["noaa_event_count", "fema_valid_registrations", "fema_total_damage", "nri_risk_score", "(constant)"],
                 index=0,
@@ -1577,6 +1602,7 @@ with tab_year:
                 st.caption(
                     f"Primary visual: counties are ranked by {rank_col}, colored by {metric}, and sized by {size_by}. Points shown: {len(df_map)} (cap={map_points_cap})."
                 )
+                render_map_color_scale(metric, df_map.get(metric, pd.Series(dtype=float)))
                 st.pydeck_chart(pdk.Deck(layers=highlight_layers, initial_view_state=view_state, tooltip=tooltip))
 
         with st.expander(f"Ranked table (top 50 by {rank_col})", expanded=True):
