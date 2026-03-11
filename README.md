@@ -32,7 +32,7 @@ Public hazard datasets (NOAA, FEMA, Census, National Risk Index) are
 fragmented, inconsistently structured, and not production-ready for
 analytics or modeling.
 
-This project builds a **production-grade, serverless AWS data platform**
+This project builds a production-grade, serverless AWS data platform
 that:
 
 -   Standardizes multi-source U.S. hazard data
@@ -45,8 +45,8 @@ The result is a reproducible, validation-gated hazard analytics
 foundation suitable for underwriting research, catastrophe risk
 analysis, and downstream ML modeling.
 
-Infrastructure is provisioned using **Terraform** and orchestrated via
-**AWS Step Functions** with Lambda-based operational agents.
+Infrastructure is provisioned using Terraform and orchestrated via
+AWS Step Functions with Lambda-based operational agents.
 
 Athena Database: `gold_hazard`
 
@@ -175,9 +175,9 @@ Application Layer
 This platform integrates multiple public datasets and standardizes them
 to a unified analytical grain:
 
-- **Geographic key:** `county_fips`
-- **Time grain:** `year`
-- **Hazard segmentation:** `hazard_type` (where applicable)
+- Geographic key: `county_fips`
+- Time grain: `year`
+- Hazard segmentation: `hazard_type` (where applicable)
 
 All joins and transformations are explicitly aligned to this canonical
 county-year grain to prevent silent duplication or aggregation drift.
@@ -242,11 +242,11 @@ prior to aggregation into Gold.
 
 ### U.S. Census Bureau – Gazetteer Files (Counties, National)
 
-- **Source:** U.S. Census Bureau Gazetteer Files  
-- **File Used:** `2025_Gaz_counties_national.txt`  
-- **Grain:** County-level (national coverage)  
-- **Purpose:** Provides official county FIPS codes, county names, land area, and geographic centroid coordinates (latitude and longitude).  
-- **Role in Platform:**  
+- Source: U.S. Census Bureau Gazetteer Files  
+- File Used: `2025_Gaz_counties_national.txt`  
+- Grain: County-level (national coverage)  
+- Purpose: Provides official county FIPS codes, county names, land area, and geographic centroid coordinates (latitude and longitude).  
+- Role in Platform:  
   - Powers the `gold_hazard.county_centroids_current` view  
   - Enables county-level geospatial visualization in the Streamlit Risk Explorer map  
 - Serves as the canonical geographic reference layer for FIPS normalization and joins across hazard datasets  
@@ -293,12 +293,12 @@ serving would shift.
 
 Equivalent component mapping:
 
-- **Terraform IaC** -> **Terraform + Azure Databricks provider**
-- **AWS Step Functions** -> **Azure Databricks Workflows**
-- **Lambda Agents** -> **Azure Databricks Jobs / notebooks / Python tasks**
-- **S3 Bronze / Silver / Gold** -> **Delta Lake tables in Unity Catalog backed by ADLS**
-- **Athena** -> **Azure Databricks SQL Warehouses**
-- **BI / ML / Agents** -> **BI tools, notebooks, and model/agent consumers querying Delta tables**
+- Terraform IaC -> Terraform + Azure Databricks provider
+- AWS Step Functions -> Azure Databricks Workflows
+- Lambda Agents -> Azure Databricks Jobs / notebooks / Python tasks
+- S3 Bronze / Silver / Gold -> Delta Lake tables in Unity Catalog backed by ADLS
+- Athena -> Azure Databricks SQL Warehouses
+- BI / ML / Agents -> BI tools, notebooks, and model/agent consumers querying Delta tables
 
 ```mermaid
 flowchart LR
@@ -411,7 +411,7 @@ All Silver tables enforce deterministic grain integrity before any Gold promotio
 
 ## Gold Layer
 
-Only data from **2010–2023** is allowed in Gold.  
+Only data from 2010–2023 is allowed in Gold.  
 This window is enforced both in CTAS builds and validation gates.
 
 Design principle:
@@ -536,7 +536,7 @@ Using the Gold data marts:
 
 1.  Analysts examine NOAA hazard event counts.
 2.  They compare FEMA valid registrations and total damage.
-3.  They calculate **claims-per-event ratios** to identify counties with
+3.  They calculate claims-per-event ratios to identify counties with
     unusually high insurance impact relative to hazard frequency.
 4.  Counties with elevated ratios are flagged for underwriting review or
     pricing adjustment.
