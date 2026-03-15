@@ -754,49 +754,27 @@ if "pending_roll_window" not in st.session_state:
     st.session_state["pending_roll_window"] = None
 page_options = ["County FIPS Directory", "County View", "Year View (All Counties)"]
 if "current_page" not in st.session_state:
-    qp_page = str(st.query_params.get("page", page_options[0]))
-    st.session_state["current_page"] = qp_page if qp_page in page_options else page_options[0]
-if "last_synced_page" not in st.session_state:
-    st.session_state["last_synced_page"] = st.session_state["current_page"]
+    st.session_state["current_page"] = page_options[0]
 if "directory_state" not in st.session_state:
-    st.session_state["directory_state"] = str(st.query_params.get("directory_state", "All"))
+    st.session_state["directory_state"] = "All"
 if "directory_county_search" not in st.session_state:
-    st.session_state["directory_county_search"] = str(st.query_params.get("directory_search", ""))
+    st.session_state["directory_county_search"] = ""
 if "last_year" not in st.session_state:
-    qp_year = st.query_params.get("year")
-    st.session_state["last_year"] = int(qp_year) if str(qp_year).isdigit() and int(qp_year) in YEAR_OPTIONS else YEAR_OPTIONS[-1]
+    st.session_state["last_year"] = YEAR_OPTIONS[-1]
 if "last_county_fips" not in st.session_state:
-    qp_fips = normalize_county_fips(str(st.query_params.get("county_fips", "06037")))
-    st.session_state["last_county_fips"] = qp_fips if is_valid_fips(qp_fips) else "06037"
+    st.session_state["last_county_fips"] = "06037"
 if "last_roll_window" not in st.session_state:
-    qp_roll = st.query_params.get("roll_window")
-    st.session_state["last_roll_window"] = int(qp_roll) if str(qp_roll).isdigit() and int(qp_roll) in [3, 5, 7] else 5
+    st.session_state["last_roll_window"] = 5
 if "county_fips_input" not in st.session_state:
     st.session_state["county_fips_input"] = st.session_state["last_county_fips"]
 if "year_select" not in st.session_state:
     st.session_state["year_select"] = st.session_state["last_year"]
 if "roll_window" not in st.session_state:
     st.session_state["roll_window"] = st.session_state["last_roll_window"]
-if str(st.query_params.get("has_run", "0")) == "1":
-    st.session_state["has_run"] = True
 
 
 def record_last_query_stats(scanned: int, exec_ms: int) -> None:
     st.session_state["last_query_stats"] = format_scan_runtime(scanned, exec_ms)
-
-
-def sync_query_params() -> None:
-    st.query_params.clear()
-    st.query_params["page"] = str(st.session_state.get("current_page", page_options[0]))
-    st.query_params["year"] = str(st.session_state.get("last_year", YEAR_OPTIONS[-1]))
-    st.query_params["county_fips"] = str(st.session_state.get("last_county_fips", "06037"))
-    st.query_params["roll_window"] = str(st.session_state.get("last_roll_window", 5))
-    st.query_params["has_run"] = "1" if st.session_state.get("has_run", False) else "0"
-    if st.session_state.get("directory_state", "All") != "All":
-        st.query_params["directory_state"] = str(st.session_state["directory_state"])
-    directory_search = str(st.session_state.get("directory_county_search", "")).strip()
-    if directory_search:
-        st.query_params["directory_search"] = directory_search
 
 
 with st.sidebar:
@@ -874,7 +852,6 @@ with st.sidebar:
             st.session_state["last_county_fips"] = county_fips
             st.session_state["last_roll_window"] = int(roll_window)
             st.session_state["last_run_utc"] = utc_now_str()
-            sync_query_params()
 
     with c_reset:
         if st.button("Reset", key="reset_btn"):
@@ -886,7 +863,6 @@ with st.sidebar:
             st.session_state["pending_year_select"] = int(years[-1])
             st.session_state["pending_county_fips"] = "06037"
             st.session_state["pending_roll_window"] = 5
-            sync_query_params()
             st.rerun()
 
     with c_clear:
@@ -1000,9 +976,6 @@ page = st.radio(
     key="current_page",
     label_visibility="collapsed",
 )
-if st.session_state.get("last_synced_page") != page:
-    st.session_state["last_synced_page"] = page
-    sync_query_params()
 
 with st.expander("How to interpret these metrics (structural vs realized)", expanded=True):
     st.markdown(
@@ -1074,14 +1047,6 @@ if page == "County FIPS Directory":
                 placeholder="Example: Los Angeles",
             ).strip()
 
-        if (
-            st.session_state.get("directory_state") != state_filter
-            or st.session_state.get("directory_county_search", "").strip() != county_search
-        ):
-            st.session_state["directory_state"] = state_filter
-            st.session_state["directory_county_search"] = county_search
-            sync_query_params()
-
         df_dir_view = df_dir.copy()
         if state_filter != "All":
             df_dir_view = df_dir_view[df_dir_view["state"].astype(str) == state_filter]
@@ -1128,7 +1093,6 @@ if page == "County FIPS Directory":
             if st.button("Use this FIPS in Explorer", key="directory_apply_fips"):
                 st.session_state["pending_county_fips"] = selected_fips
                 st.session_state["last_county_fips"] = selected_fips
-                sync_query_params()
                 st.rerun()
         else:
             render_notice(
