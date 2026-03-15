@@ -95,6 +95,7 @@ data/*/*
 *.tsv
 *.jsonl
 *.zip
+docs/assets/*.mov
 
 # ============================================
 # ML / RAG ARTIFACTS

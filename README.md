@@ -63,22 +63,18 @@ views in action.
 
 ## App Preview
 
-For a stronger GitHub presentation, add a checked-in screenshot or short GIF
-directly under this section.
+![Risk Explorer demo](docs/assets/risk-explorer-demo.gif)
 
-Recommended repo paths:
+A short preview of the Streamlit app showing filter selection, execution, and
+the county ranking and map workflow.
 
-- `docs/assets/risk-explorer-screenshot.png`
-- `docs/assets/risk-explorer-demo.gif`
+### County View
 
-Recommended embed patterns:
+![Risk Explorer county view](docs/assets/risk-explorer-county-view.png)
 
-- Screenshot: `![Risk Explorer screenshot](docs/assets/risk-explorer-screenshot.png)`
-- Screencast/GIF: `![Risk Explorer demo](docs/assets/risk-explorer-demo.gif)`
+### Year View
 
-Prefer local repo assets over external links so the README renders reliably in
-GitHub, forks, and portfolio reviews. See `docs/assets/README.md` for the
-intended asset location and filenames.
+![Risk Explorer year view](docs/assets/risk-explorer-year-view.png)
 
 It supports:
 
