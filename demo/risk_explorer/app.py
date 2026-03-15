@@ -248,6 +248,17 @@ def sql_county_lookup(county_fips: str) -> str:
     """
 
 
+def sql_county_directory() -> str:
+    return """
+    SELECT
+      LPAD(CAST(county_fips AS VARCHAR), 5, '0') AS county_fips,
+      county_name,
+      state
+    FROM gold_hazard.county_centroids_current
+    ORDER BY state, county_name
+    """
+
+
 def sql_top_claims_per_event(year: int, limit: int = 25) -> str:
     return f"""
     SELECT
@@ -822,17 +833,12 @@ with st.sidebar:
             st.success("Cleared Streamlit cache. Re-run Explorer.")
 
 
-# Pre-run validation
-if not st.session_state["has_run"]:
-    render_notice("Ready to Run", "Set filters in the sidebar, then click `Run Explorer` to populate the dashboard.")
-    st.stop()
-
 # Always operate on last applied filters to avoid confusing reruns
 year = int(st.session_state.get("last_year", int(year)))
 county_fips = str(st.session_state.get("last_county_fips", county_fips))
 roll_window = int(st.session_state.get("last_roll_window", int(roll_window)))
 
-if not is_valid_fips(county_fips):
+if st.session_state["has_run"] and not is_valid_fips(county_fips):
     st.error("County FIPS must be exactly 5 digits (e.g., 06037).")
     st.stop()
 
@@ -943,130 +949,223 @@ To reduce year-to-year noise, the County View also includes **rolling averages**
 # =============================================================================
 # Results
 # =============================================================================
-tab_county, tab_year = st.tabs(["County View", "Year View (All Counties)"])
+tab_directory, tab_county, tab_year = st.tabs(
+    ["County FIPS Directory", "County View", "Year View (All Counties)"]
+)
+
+# ============================================================
+# County FIPS Directory
+# ============================================================
+with tab_directory:
+    render_panel_label("County Lookup")
+    st.markdown("## County FIPS Directory")
+    st.caption(
+        "Search the canonical county reference by state and county name, then use the returned 5-digit FIPS in the Risk Explorer."
+    )
+
+    with st.spinner("Loading county directory..."):
+        df_dir, scanned_dir, exec_ms_dir = run_query_cached(
+            region=cfg.region,
+            database=cfg.database,
+            workgroup=cfg.workgroup,
+            output_s3=cfg.output_s3,
+            sql=sql_county_directory(),
+            max_rows=5000,
+            timeout_seconds=timeout_seconds,
+        )
+    record_last_query_stats(scanned_dir, exec_ms_dir)
+
+    if show_query_stats:
+        st.caption(f"County directory • {format_scan_runtime(scanned_dir, exec_ms_dir)}")
+
+    if df_dir.empty:
+        render_notice(
+            "Directory Unavailable",
+            "The county directory query returned no rows. Confirm that `gold_hazard.county_centroids_current` is reachable.",
+            tone="warning",
+        )
+    else:
+        states = ["All"] + sorted(df_dir["state"].dropna().astype(str).unique().tolist())
+        dir_c1, dir_c2 = st.columns([1, 1.5])
+        with dir_c1:
+            state_filter = st.selectbox("State", states, index=0, key="directory_state")
+        with dir_c2:
+            county_search = st.text_input(
+                "County name contains",
+                value="",
+                key="directory_county_search",
+                placeholder="Example: Los Angeles",
+            ).strip()
+
+        df_dir_view = df_dir.copy()
+        if state_filter != "All":
+            df_dir_view = df_dir_view[df_dir_view["state"].astype(str) == state_filter]
+        if county_search:
+            df_dir_view = df_dir_view[
+                df_dir_view["county_name"].astype(str).str.contains(county_search, case=False, na=False)
+            ]
+
+        df_dir_view = df_dir_view.sort_values(["state", "county_name"]).reset_index(drop=True)
+
+        st.caption(f"Matches: {len(df_dir_view)}")
+        show_table(df_dir_view, column_config={"county_fips": st.column_config.TextColumn("county_fips")})
+
+        if not df_dir_view.empty:
+            options = [
+                f"{row.county_name}, {row.state} ({row.county_fips})"
+                for row in df_dir_view[["county_name", "state", "county_fips"]].itertuples(index=False)
+            ]
+            selected_label = st.selectbox(
+                "Selected county",
+                options,
+                index=0,
+                key="directory_selected_county",
+            )
+            selected_fips = selected_label.rsplit("(", 1)[-1].rstrip(")")
+            render_kpi_cards(
+                [
+                    ("Selected county FIPS", selected_fips),
+                    ("State filter", state_filter),
+                    ("County search", county_search or "—"),
+                ]
+            )
+            if st.button("Use this FIPS in Explorer", key="directory_apply_fips"):
+                st.session_state["county_fips_input"] = selected_fips
+                st.session_state["last_county_fips"] = selected_fips
+                st.success(f"Set County FIPS to {selected_fips} in the explorer controls.")
+        else:
+            render_notice(
+                "No Directory Matches",
+                "Try a broader state filter or a shorter county-name search.",
+            )
 
 # ============================================================
 # County View
 # ============================================================
 with tab_county:
-    render_panel_label("Primary Analysis")
-    st.markdown("## County View")
-    st.caption("Single-county trend read. Start with the snapshot, then compare baseline vs realized annual movement.")
-
-    # County lookup (name/state + lat/lon)
-    with st.spinner("Loading county metadata..."):
-        df_meta, scanned_meta, exec_ms_meta = run_query_cached(
-            region=cfg.region,
-            database=cfg.database,
-            workgroup=cfg.workgroup,
-            output_s3=cfg.output_s3,
-            sql=sql_county_lookup(county_fips),
-            max_rows=10,
-            timeout_seconds=timeout_seconds,
-        )
-    record_last_query_stats(scanned_meta, exec_ms_meta)
-
-    meta = {}
-    if not df_meta.empty:
-        meta = df_meta.iloc[0].to_dict()
-        c_meta1, c_meta2, c_meta3 = st.columns([1.4, 1, 1])
-        c_meta1.metric("Selected county", f"{meta.get('county_name','—')}, {meta.get('state','—')}")
-        c_meta2.metric("County FIPS", meta.get("county_fips", "—"))
-        c_meta3.metric("Selected year", str(year))
-    if show_query_stats:
-        st.caption(f"County lookup • {format_scan_runtime(scanned_meta, exec_ms_meta)}")
-
-    st.markdown("### County time series (structural vs realized)")
-    st.caption(
-        "We show **realized** signals yearly and as rolling averages, alongside the (often static) **structural** NRI baseline."
-    )
-    filter_badges("Filters: County FIPS", "Source: risk_feature_mart_current")
-
-    with st.spinner("Running Athena query: county time series..."):
-        df_ts, scanned_ts, exec_ms_ts = run_query_cached(
-            region=cfg.region,
-            database=cfg.database,
-            workgroup=cfg.workgroup,
-            output_s3=cfg.output_s3,
-            sql=sql_county_timeseries_with_rollups(county_fips=county_fips, window_years=roll_window),
-            max_rows=cfg.max_rows,
-            timeout_seconds=timeout_seconds,
-        )
-    record_last_query_stats(scanned_ts, exec_ms_ts)
-
-    df_ts = coerce_year_int(df_ts, "year")
-    for c in [
-        "noaa_event_count",
-        "fema_valid_registrations",
-        "fema_total_damage",
-        "nri_risk_score",
-        f"noaa_events_roll{roll_window}",
-        f"fema_regs_roll{roll_window}",
-        f"fema_damage_roll{roll_window}",
-    ]:
-        if c in df_ts.columns:
-            df_ts[c] = pd.to_numeric(df_ts[c], errors="coerce")
-
-    # Derived metric: registrations per event (intensity)
-    if {"fema_valid_registrations", "noaa_event_count"}.issubset(df_ts.columns):
-        df_ts["claims_per_event"] = df_ts["fema_valid_registrations"] / df_ts["noaa_event_count"].replace(0, pd.NA)
-
-    if show_query_stats:
-        st.caption(format_scan_runtime(scanned_ts, exec_ms_ts))
-
-    if df_ts.empty or "year" not in df_ts.columns:
-        render_notice(
-            "No County Time Series",
-            "No rows were returned for this county. Confirm the County FIPS format and that the Gold views are populated for this slice.",
-            tone="warning",
-        )
+    if not st.session_state["has_run"]:
+        render_panel_label("Primary Analysis")
+        st.markdown("## County View")
+        render_notice("Ready to Run", "Set filters in the sidebar, then click `Run Explorer` to populate County View.")
     else:
-        latest = df_ts.dropna(subset=["year"]).sort_values("year").tail(1)
-        if not latest.empty:
-            row = latest.iloc[0].to_dict()
-            st.markdown("### County snapshot (latest year in series)")
-            render_kpi_cards(
-                [
-                    (
-                        "NRI (structural)",
-                        f"{row.get('nri_risk_score', float('nan')):.2f}"
-                        if pd.notna(row.get("nri_risk_score"))
-                        else "—",
-                    ),
-                    (
-                        "NOAA events",
-                        f"{int(row.get('noaa_event_count'))}"
-                        if pd.notna(row.get("noaa_event_count"))
-                        else "—",
-                    ),
-                    (
-                        "FEMA registrations",
-                        f"{row.get('fema_valid_registrations', float('nan')):.0f}"
-                        if pd.notna(row.get("fema_valid_registrations"))
-                        else "—",
-                    ),
-                    ("FEMA damage", human_money(row.get("fema_total_damage"))),
-                ]
+        render_panel_label("Primary Analysis")
+        st.markdown("## County View")
+        st.caption("Single-county trend read. Start with the snapshot, then compare baseline vs realized annual movement.")
+
+        # County lookup (name/state + lat/lon)
+        with st.spinner("Loading county metadata..."):
+            df_meta, scanned_meta, exec_ms_meta = run_query_cached(
+                region=cfg.region,
+                database=cfg.database,
+                workgroup=cfg.workgroup,
+                output_s3=cfg.output_s3,
+                sql=sql_county_lookup(county_fips),
+                max_rows=10,
+                timeout_seconds=timeout_seconds,
             )
-            signal_notes = []
-            if pd.notna(row.get("nri_risk_score")):
-                signal_notes.append(f"Structural baseline is {float(row.get('nri_risk_score')):.2f} in the latest year.")
-            if pd.notna(row.get("noaa_event_count")) and pd.notna(row.get("fema_valid_registrations")):
-                signal_notes.append(
-                    f"Observed {int(row.get('noaa_event_count'))} NOAA events and {float(row.get('fema_valid_registrations')):.0f} FEMA registrations."
+        record_last_query_stats(scanned_meta, exec_ms_meta)
+
+        meta = {}
+        if not df_meta.empty:
+            meta = df_meta.iloc[0].to_dict()
+            c_meta1, c_meta2, c_meta3 = st.columns([1.4, 1, 1])
+            c_meta1.metric("Selected county", f"{meta.get('county_name','—')}, {meta.get('state','—')}")
+            c_meta2.metric("County FIPS", meta.get("county_fips", "—"))
+            c_meta3.metric("Selected year", str(year))
+        if show_query_stats:
+            st.caption(f"County lookup • {format_scan_runtime(scanned_meta, exec_ms_meta)}")
+
+        st.markdown("### County time series (structural vs realized)")
+        st.caption(
+            "We show **realized** signals yearly and as rolling averages, alongside the (often static) **structural** NRI baseline."
+        )
+        filter_badges("Filters: County FIPS", "Source: risk_feature_mart_current")
+
+        with st.spinner("Running Athena query: county time series..."):
+            df_ts, scanned_ts, exec_ms_ts = run_query_cached(
+                region=cfg.region,
+                database=cfg.database,
+                workgroup=cfg.workgroup,
+                output_s3=cfg.output_s3,
+                sql=sql_county_timeseries_with_rollups(county_fips=county_fips, window_years=roll_window),
+                max_rows=cfg.max_rows,
+                timeout_seconds=timeout_seconds,
+            )
+        record_last_query_stats(scanned_ts, exec_ms_ts)
+
+        df_ts = coerce_year_int(df_ts, "year")
+        for c in [
+            "noaa_event_count",
+            "fema_valid_registrations",
+            "fema_total_damage",
+            "nri_risk_score",
+            f"noaa_events_roll{roll_window}",
+            f"fema_regs_roll{roll_window}",
+            f"fema_damage_roll{roll_window}",
+        ]:
+            if c in df_ts.columns:
+                df_ts[c] = pd.to_numeric(df_ts[c], errors="coerce")
+
+        # Derived metric: registrations per event (intensity)
+        if {"fema_valid_registrations", "noaa_event_count"}.issubset(df_ts.columns):
+            df_ts["claims_per_event"] = df_ts["fema_valid_registrations"] / df_ts["noaa_event_count"].replace(0, pd.NA)
+
+        if show_query_stats:
+            st.caption(format_scan_runtime(scanned_ts, exec_ms_ts))
+
+        if df_ts.empty or "year" not in df_ts.columns:
+            render_notice(
+                "No County Time Series",
+                "No rows were returned for this county. Confirm the County FIPS format and that the Gold views are populated for this slice.",
+                tone="warning",
+            )
+        else:
+            latest = df_ts.dropna(subset=["year"]).sort_values("year").tail(1)
+            if not latest.empty:
+                row = latest.iloc[0].to_dict()
+                st.markdown("### County snapshot (latest year in series)")
+                render_kpi_cards(
+                    [
+                        (
+                            "NRI (structural)",
+                            f"{row.get('nri_risk_score', float('nan')):.2f}"
+                            if pd.notna(row.get("nri_risk_score"))
+                            else "—",
+                        ),
+                        (
+                            "NOAA events",
+                            f"{int(row.get('noaa_event_count'))}"
+                            if pd.notna(row.get("noaa_event_count"))
+                            else "—",
+                        ),
+                        (
+                            "FEMA registrations",
+                            f"{row.get('fema_valid_registrations', float('nan')):.0f}"
+                            if pd.notna(row.get("fema_valid_registrations"))
+                            else "—",
+                        ),
+                        ("FEMA damage", human_money(row.get("fema_total_damage"))),
+                    ]
                 )
-            if "claims_per_event" in df_ts.columns:
-                latest_cpe = df_ts.dropna(subset=["year"]).sort_values("year").tail(1).iloc[0].get("claims_per_event")
-                if pd.notna(latest_cpe):
-                    signal_notes.append(f"Claim intensity is {float(latest_cpe):.2f} registrations per NOAA event.")
-            render_insight_block(
-                "Signature Read",
-                "Use this as the first interpretation checkpoint before scanning the detailed trend lines.",
-                signal_notes
-                or [
-                    "The latest year snapshot is available, but not all derived metrics are populated for this county."
-                ],
-            )
+                signal_notes = []
+                if pd.notna(row.get("nri_risk_score")):
+                    signal_notes.append(f"Structural baseline is {float(row.get('nri_risk_score')):.2f} in the latest year.")
+                if pd.notna(row.get("noaa_event_count")) and pd.notna(row.get("fema_valid_registrations")):
+                    signal_notes.append(
+                        f"Observed {int(row.get('noaa_event_count'))} NOAA events and {float(row.get('fema_valid_registrations')):.0f} FEMA registrations."
+                    )
+                if "claims_per_event" in df_ts.columns:
+                    latest_cpe = df_ts.dropna(subset=["year"]).sort_values("year").tail(1).iloc[0].get("claims_per_event")
+                    if pd.notna(latest_cpe):
+                        signal_notes.append(f"Claim intensity is {float(latest_cpe):.2f} registrations per NOAA event.")
+                render_insight_block(
+                    "Signature Read",
+                    "Use this as the first interpretation checkpoint before scanning the detailed trend lines.",
+                    signal_notes
+                    or [
+                        "The latest year snapshot is available, but not all derived metrics are populated for this county."
+                    ],
+                )
 
         primary_left, primary_right = st.columns([1.8, 1])
         with primary_left:
@@ -1196,58 +1295,64 @@ with tab_county:
         with st.expander("Raw county time series (table)", expanded=False):
             show_table(df_ts, column_config=dataframe_year_config())
 
-    st.divider()
+        st.divider()
 
-    with st.expander("Hazard breakdown (selected county + year)", expanded=False):
-        st.caption("Observed NOAA hazard composition for the selected county/year. Start with event volume, then use the table for supporting metrics.")
-        filter_badges("Filters: County FIPS + Year", "Source: hazard_event_summary_current")
+        with st.expander("Hazard breakdown (selected county + year)", expanded=False):
+            st.caption("Observed NOAA hazard composition for the selected county/year. Start with event volume, then use the table for supporting metrics.")
+            filter_badges("Filters: County FIPS + Year", "Source: hazard_event_summary_current")
 
-        with st.spinner("Running Athena query: hazard breakdown..."):
-            df_h, scanned_h, exec_ms_h = run_query_cached(
-                region=cfg.region,
-                database=cfg.database,
-                workgroup=cfg.workgroup,
-                output_s3=cfg.output_s3,
-                sql=sql_hazard_breakdown(county_fips=county_fips, year=year),
-                max_rows=cfg.max_rows,
-                timeout_seconds=timeout_seconds,
-            )
-        record_last_query_stats(scanned_h, exec_ms_h)
-
-        for c in ["event_count", "total_fatalities", "total_injuries", "avg_property_damage"]:
-            if c in df_h.columns:
-                df_h[c] = pd.to_numeric(df_h[c], errors="coerce")
-
-        if show_query_stats:
-            st.caption(format_scan_runtime(scanned_h, exec_ms_h))
-
-        if df_h.empty:
-            render_notice(
-                "No Hazard Rows for This Slice",
-                "This county/year can legitimately be quiet with 0 realized events even when the structural baseline is elevated.",
-            )
-        else:
-            if {"hazard_type", "event_count"}.issubset(df_h.columns):
-                st.altair_chart(
-                    bar_chart(
-                        df_h.dropna(subset=["hazard_type", "event_count"]),
-                        x="hazard_type",
-                        y="event_count",
-                        title="Which hazard types drove the most observed events?",
-                        x_title="Hazard type",
-                        y_title="Event count",
-                    ),
-                    use_container_width=True,
+            with st.spinner("Running Athena query: hazard breakdown..."):
+                df_h, scanned_h, exec_ms_h = run_query_cached(
+                    region=cfg.region,
+                    database=cfg.database,
+                    workgroup=cfg.workgroup,
+                    output_s3=cfg.output_s3,
+                    sql=sql_hazard_breakdown(county_fips=county_fips, year=year),
+                    max_rows=cfg.max_rows,
+                    timeout_seconds=timeout_seconds,
                 )
-        show_table(df_h)
+            record_last_query_stats(scanned_h, exec_ms_h)
+
+            for c in ["event_count", "total_fatalities", "total_injuries", "avg_property_damage"]:
+                if c in df_h.columns:
+                    df_h[c] = pd.to_numeric(df_h[c], errors="coerce")
+
+            if show_query_stats:
+                st.caption(format_scan_runtime(scanned_h, exec_ms_h))
+
+            if df_h.empty:
+                render_notice(
+                    "No Hazard Rows for This Slice",
+                    "This county/year can legitimately be quiet with 0 realized events even when the structural baseline is elevated.",
+                )
+            else:
+                if {"hazard_type", "event_count"}.issubset(df_h.columns):
+                    st.altair_chart(
+                        bar_chart(
+                            df_h.dropna(subset=["hazard_type", "event_count"]),
+                            x="hazard_type",
+                            y="event_count",
+                            title="Which hazard types drove the most observed events?",
+                            x_title="Hazard type",
+                            y_title="Event count",
+                        ),
+                        use_container_width=True,
+                    )
+            show_table(df_h)
 
 # ============================================================
 # Year View (All Counties)
 # ============================================================
 with tab_year:
-    render_panel_label("Decision Surface")
-    st.markdown("## Year View (All Counties)")
-    st.caption("Single-year ranking view. Lead with the ranked map, then open supporting anomaly tables only when needed.")
+    if not st.session_state["has_run"]:
+        render_panel_label("Decision Surface")
+        st.markdown("## Year View (All Counties)")
+        render_notice("Ready to Run", "Set filters in the sidebar, then click `Run Explorer` to populate Year View.")
+        st.stop()
+    else:
+        render_panel_label("Decision Surface")
+        st.markdown("## Year View (All Counties)")
+        st.caption("Single-year ranking view. Lead with the ranked map, then open supporting anomaly tables only when needed.")
 
     # KPI row (fast, high-signal)
     with st.spinner("Computing year KPIs..."):
