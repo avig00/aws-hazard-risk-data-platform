@@ -746,6 +746,8 @@ if "last_run_utc" not in st.session_state:
     st.session_state["last_run_utc"] = None
 if "last_query_stats" not in st.session_state:
     st.session_state["last_query_stats"] = ""
+if "pending_county_fips" not in st.session_state:
+    st.session_state["pending_county_fips"] = None
 
 
 def record_last_query_stats(scanned: int, exec_ms: int) -> None:
@@ -785,6 +787,10 @@ with st.sidebar:
     years = YEAR_OPTIONS
 
     year = st.selectbox("Year", years, index=len(years) - 1, key="year_select")
+
+    if st.session_state.get("pending_county_fips"):
+        st.session_state["county_fips_input"] = st.session_state["pending_county_fips"]
+        st.session_state["pending_county_fips"] = None
 
     county_fips_in = st.text_input("County FIPS (5 digits)", value="06037", key="county_fips_input")
     county_fips = normalize_county_fips(county_fips_in)
@@ -1030,9 +1036,9 @@ with tab_directory:
                 ]
             )
             if st.button("Use this FIPS in Explorer", key="directory_apply_fips"):
-                st.session_state["county_fips_input"] = selected_fips
+                st.session_state["pending_county_fips"] = selected_fips
                 st.session_state["last_county_fips"] = selected_fips
-                st.success(f"Set County FIPS to {selected_fips} in the explorer controls.")
+                st.rerun()
         else:
             render_notice(
                 "No Directory Matches",
