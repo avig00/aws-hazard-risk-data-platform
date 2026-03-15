@@ -748,10 +748,31 @@ if "last_query_stats" not in st.session_state:
     st.session_state["last_query_stats"] = ""
 if "pending_county_fips" not in st.session_state:
     st.session_state["pending_county_fips"] = None
+if "last_year" not in st.session_state:
+    qp_year = st.query_params.get("year")
+    st.session_state["last_year"] = int(qp_year) if str(qp_year).isdigit() and int(qp_year) in YEAR_OPTIONS else YEAR_OPTIONS[-1]
+if "last_county_fips" not in st.session_state:
+    qp_fips = normalize_county_fips(str(st.query_params.get("county_fips", "06037")))
+    st.session_state["last_county_fips"] = qp_fips if is_valid_fips(qp_fips) else "06037"
+if "last_roll_window" not in st.session_state:
+    qp_roll = st.query_params.get("roll_window")
+    st.session_state["last_roll_window"] = int(qp_roll) if str(qp_roll).isdigit() and int(qp_roll) in [3, 5, 7] else 5
+if "county_fips_input" not in st.session_state:
+    st.session_state["county_fips_input"] = st.session_state["last_county_fips"]
+if str(st.query_params.get("has_run", "0")) == "1":
+    st.session_state["has_run"] = True
 
 
 def record_last_query_stats(scanned: int, exec_ms: int) -> None:
     st.session_state["last_query_stats"] = format_scan_runtime(scanned, exec_ms)
+
+
+def sync_query_params() -> None:
+    st.query_params.clear()
+    st.query_params["year"] = str(st.session_state.get("last_year", YEAR_OPTIONS[-1]))
+    st.query_params["county_fips"] = str(st.session_state.get("last_county_fips", "06037"))
+    st.query_params["roll_window"] = str(st.session_state.get("last_roll_window", 5))
+    st.query_params["has_run"] = "1" if st.session_state.get("has_run", False) else "0"
 
 
 with st.sidebar:
@@ -823,6 +844,7 @@ with st.sidebar:
             st.session_state["last_county_fips"] = county_fips
             st.session_state["last_roll_window"] = int(roll_window)
             st.session_state["last_run_utc"] = utc_now_str()
+            sync_query_params()
 
     with c_reset:
         if st.button("Reset", key="reset_btn"):
@@ -831,6 +853,8 @@ with st.sidebar:
             st.session_state["last_year"] = int(years[-1])
             st.session_state["last_county_fips"] = "06037"
             st.session_state["last_roll_window"] = 5
+            st.session_state["county_fips_input"] = "06037"
+            sync_query_params()
             st.rerun()
 
     with c_clear:
@@ -1014,30 +1038,39 @@ with tab_directory:
         df_dir_view = df_dir_view.sort_values(["state", "county_name"]).reset_index(drop=True)
 
         st.caption(f"Matches: {len(df_dir_view)}")
-        show_table(df_dir_view, column_config={"county_fips": st.column_config.TextColumn("county_fips")})
-
+        st.caption("Click a row in the table to select that county and use its FIPS in the explorer.")
+        selected_fips = None
         if not df_dir_view.empty:
-            options = [
-                f"{row.county_name}, {row.state} ({row.county_fips})"
-                for row in df_dir_view[["county_name", "state", "county_fips"]].itertuples(index=False)
-            ]
-            selected_label = st.selectbox(
-                "Selected county",
-                options,
-                index=0,
-                key="directory_selected_county",
+            dir_event = st.dataframe(
+                df_dir_view,
+                use_container_width=True,
+                hide_index=True,
+                column_config={"county_fips": st.column_config.TextColumn("county_fips")},
+                on_select="rerun",
+                selection_mode="single-row",
+                key="directory_table",
             )
-            selected_fips = selected_label.rsplit("(", 1)[-1].rstrip(")")
+            selected_rows = list(getattr(getattr(dir_event, "selection", None), "rows", []) or [])
+            if selected_rows:
+                selected_idx = int(selected_rows[0])
+                selected_row = df_dir_view.iloc[selected_idx]
+                selected_fips = str(selected_row["county_fips"])
+                selected_county = str(selected_row["county_name"])
+                selected_state = str(selected_row["state"])
+            else:
+                selected_county = "—"
+                selected_state = state_filter
             render_kpi_cards(
                 [
-                    ("Selected county FIPS", selected_fips),
-                    ("State filter", state_filter),
+                    ("Selected county FIPS", selected_fips or "Click a row"),
+                    ("Selected county", f"{selected_county}, {selected_state}" if selected_fips else "—"),
                     ("County search", county_search or "—"),
                 ]
             )
-            if st.button("Use this FIPS in Explorer", key="directory_apply_fips"):
+            if st.button("Use this FIPS in Explorer", key="directory_apply_fips", disabled=selected_fips is None):
                 st.session_state["pending_county_fips"] = selected_fips
                 st.session_state["last_county_fips"] = selected_fips
+                sync_query_params()
                 st.rerun()
         else:
             render_notice(
@@ -1074,10 +1107,9 @@ with tab_county:
         meta = {}
         if not df_meta.empty:
             meta = df_meta.iloc[0].to_dict()
-            c_meta1, c_meta2, c_meta3 = st.columns([1.4, 1, 1])
+            c_meta1, c_meta2 = st.columns([1.8, 1])
             c_meta1.metric("Selected county", f"{meta.get('county_name','—')}, {meta.get('state','—')}")
             c_meta2.metric("County FIPS", meta.get("county_fips", "—"))
-            c_meta3.metric("Selected year", str(year))
         if show_query_stats:
             st.caption(f"County lookup • {format_scan_runtime(scanned_meta, exec_ms_meta)}")
 
@@ -1359,6 +1391,7 @@ with tab_year:
         render_panel_label("Decision Surface")
         st.markdown("## Year View (All Counties)")
         st.caption("Single-year ranking view. Lead with the ranked map, then open supporting anomaly tables only when needed.")
+        st.metric("Selected year", str(year))
 
     # KPI row (fast, high-signal)
     with st.spinner("Computing year KPIs..."):
