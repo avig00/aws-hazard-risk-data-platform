@@ -452,6 +452,34 @@ def inject_accent_styles() -> None:
             text-transform: uppercase;
             margin-bottom: 0.1rem;
         }}
+        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] {{
+            gap: 0;
+            border-bottom: 1px solid rgba(250, 250, 250, 0.14);
+            margin: 0 0 1rem 0;
+        }}
+        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label {{
+            border: none !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            padding: 0.55rem 0.85rem 0.65rem 0.85rem !important;
+            margin: 0 0 -1px 0 !important;
+            min-height: auto !important;
+        }}
+        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label:hover {{
+            background: rgba(255, 255, 255, 0.03) !important;
+        }}
+        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label:has(input:checked) {{
+            border-bottom-color: {STREAMLIT_RED} !important;
+            background: linear-gradient(180deg, rgba(255, 75, 75, 0.08), rgba(255, 75, 75, 0.02)) !important;
+        }}
+        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label > div:first-child {{
+            display: none !important;
+        }}
+        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] p {{
+            font-weight: 600 !important;
+            margin: 0 !important;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
