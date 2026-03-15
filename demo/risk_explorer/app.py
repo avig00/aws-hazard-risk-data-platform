@@ -748,6 +748,10 @@ if "last_query_stats" not in st.session_state:
     st.session_state["last_query_stats"] = ""
 if "pending_county_fips" not in st.session_state:
     st.session_state["pending_county_fips"] = None
+if "pending_year_select" not in st.session_state:
+    st.session_state["pending_year_select"] = None
+if "pending_roll_window" not in st.session_state:
+    st.session_state["pending_roll_window"] = None
 if "last_year" not in st.session_state:
     qp_year = st.query_params.get("year")
     st.session_state["last_year"] = int(qp_year) if str(qp_year).isdigit() and int(qp_year) in YEAR_OPTIONS else YEAR_OPTIONS[-1]
@@ -811,6 +815,9 @@ with st.sidebar:
     # The mart contract already enforces a fixed 2010-2023 year window.
     years = YEAR_OPTIONS
 
+    if st.session_state.get("pending_year_select") is not None:
+        st.session_state["year_select"] = int(st.session_state["pending_year_select"])
+        st.session_state["pending_year_select"] = None
     year = st.selectbox("Year", years, index=years.index(int(st.session_state["year_select"])), key="year_select")
 
     if st.session_state.get("pending_county_fips"):
@@ -820,6 +827,9 @@ with st.sidebar:
     county_fips_in = st.text_input("County FIPS (5 digits)", value=st.session_state["county_fips_input"], key="county_fips_input")
     county_fips = normalize_county_fips(county_fips_in)
 
+    if st.session_state.get("pending_roll_window") is not None:
+        st.session_state["roll_window"] = int(st.session_state["pending_roll_window"])
+        st.session_state["pending_roll_window"] = None
     roll_window = st.selectbox("Rolling window (years)", [3, 5, 7], index=[3, 5, 7].index(int(st.session_state["roll_window"])), key="roll_window")
 
     st.divider()
@@ -847,9 +857,6 @@ with st.sidebar:
             st.session_state["last_year"] = int(year)
             st.session_state["last_county_fips"] = county_fips
             st.session_state["last_roll_window"] = int(roll_window)
-            st.session_state["year_select"] = int(year)
-            st.session_state["county_fips_input"] = county_fips
-            st.session_state["roll_window"] = int(roll_window)
             st.session_state["last_run_utc"] = utc_now_str()
             sync_query_params()
 
@@ -860,9 +867,9 @@ with st.sidebar:
             st.session_state["last_year"] = int(years[-1])
             st.session_state["last_county_fips"] = "06037"
             st.session_state["last_roll_window"] = 5
-            st.session_state["year_select"] = int(years[-1])
-            st.session_state["county_fips_input"] = "06037"
-            st.session_state["roll_window"] = 5
+            st.session_state["pending_year_select"] = int(years[-1])
+            st.session_state["pending_county_fips"] = "06037"
+            st.session_state["pending_roll_window"] = 5
             sync_query_params()
             st.rerun()
 
