@@ -63,16 +63,10 @@ views in action.
 
 ## App Preview
 
-### Short Preview
-
 ![Risk Explorer demo](docs/assets/risk-explorer-demo.gif)
 
 A short preview of the Streamlit app showing filter selection, execution, and
 the county ranking and map workflow.
-
-### Longer Preview
-
-![Risk Explorer extended demo](docs/assets/risk-explorer-demo-long.gif)
 
 ### County View
 
