@@ -452,34 +452,6 @@ def inject_accent_styles() -> None:
             text-transform: uppercase;
             margin-bottom: 0.1rem;
         }}
-        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] {{
-            gap: 0;
-            border-bottom: 1px solid rgba(250, 250, 250, 0.14);
-            margin: 0 0 1rem 0;
-        }}
-        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label {{
-            border: none !important;
-            border-bottom: 2px solid transparent !important;
-            border-radius: 0 !important;
-            background: transparent !important;
-            padding: 0.55rem 0.85rem 0.65rem 0.85rem !important;
-            margin: 0 0 -1px 0 !important;
-            min-height: auto !important;
-        }}
-        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label:hover {{
-            background: rgba(255, 255, 255, 0.03) !important;
-        }}
-        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label:has(input:checked) {{
-            border-bottom-color: {STREAMLIT_RED} !important;
-            background: linear-gradient(180deg, rgba(255, 75, 75, 0.08), rgba(255, 75, 75, 0.02)) !important;
-        }}
-        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] > label > div:first-child {{
-            display: none !important;
-        }}
-        div[data-testid="stRadio"] div[role="radiogroup"][aria-orientation="horizontal"] p {{
-            font-weight: 600 !important;
-            margin: 0 !important;
-        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -780,9 +752,6 @@ if "pending_year_select" not in st.session_state:
     st.session_state["pending_year_select"] = None
 if "pending_roll_window" not in st.session_state:
     st.session_state["pending_roll_window"] = None
-page_options = ["County FIPS Directory", "County View", "Year View (All Counties)"]
-if "current_page" not in st.session_state:
-    st.session_state["current_page"] = page_options[0]
 if "directory_state" not in st.session_state:
     st.session_state["directory_state"] = "All"
 if "directory_county_search" not in st.session_state:
@@ -997,14 +966,6 @@ with overview_right:
     if st.session_state["last_query_stats"]:
         st.caption(f"Most recent query: {st.session_state['last_query_stats']}")
 
-page = st.radio(
-    "Page",
-    page_options,
-    horizontal=True,
-    key="current_page",
-    label_visibility="collapsed",
-)
-
 with st.expander("How to interpret these metrics (structural vs realized)", expanded=True):
     st.markdown(
     """
@@ -1023,10 +984,14 @@ To reduce year-to-year noise, the County View also includes **rolling averages**
 # =============================================================================
 # Results
 # =============================================================================
+tab_directory, tab_county, tab_year = st.tabs(
+    ["County FIPS Directory", "County View", "Year View (All Counties)"]
+)
+
 # ============================================================
 # County FIPS Directory
 # ============================================================
-if page == "County FIPS Directory":
+with tab_directory:
     render_panel_label("County Lookup")
     st.markdown("## County FIPS Directory")
     st.caption(
@@ -1131,7 +1096,7 @@ if page == "County FIPS Directory":
 # ============================================================
 # County View
 # ============================================================
-elif page == "County View":
+with tab_county:
     if not st.session_state["has_run"]:
         render_panel_label("Primary Analysis")
         st.markdown("## County View")
@@ -1431,7 +1396,7 @@ elif page == "County View":
 # ============================================================
 # Year View (All Counties)
 # ============================================================
-elif page == "Year View (All Counties)":
+with tab_year:
     if not st.session_state["has_run"]:
         render_panel_label("Decision Surface")
         st.markdown("## Year View (All Counties)")
