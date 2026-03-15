@@ -1038,36 +1038,39 @@ with tab_directory:
         df_dir_view = df_dir_view.sort_values(["state", "county_name"]).reset_index(drop=True)
 
         st.caption(f"Matches: {len(df_dir_view)}")
-        st.caption("Click a row in the table to select that county and use its FIPS in the explorer.")
+        st.caption("Browse the table, then select one of the filtered matches below to use its FIPS in the explorer.")
         selected_fips = None
         if not df_dir_view.empty:
-            dir_event = st.dataframe(
+            st.dataframe(
                 df_dir_view,
                 use_container_width=True,
                 hide_index=True,
                 column_config={"county_fips": st.column_config.TextColumn("county_fips")},
-                on_select="rerun",
-                selection_mode="single-row",
-                key="directory_table",
             )
-            selected_rows = list(getattr(getattr(dir_event, "selection", None), "rows", []) or [])
-            if selected_rows:
-                selected_idx = int(selected_rows[0])
-                selected_row = df_dir_view.iloc[selected_idx]
-                selected_fips = str(selected_row["county_fips"])
-                selected_county = str(selected_row["county_name"])
-                selected_state = str(selected_row["state"])
+            options = [
+                f"{row.county_name}, {row.state} ({row.county_fips})"
+                for row in df_dir_view[["county_name", "state", "county_fips"]].itertuples(index=False)
+            ]
+            selected_label = st.selectbox(
+                "Select county from filtered matches",
+                options,
+                index=0,
+                key="directory_selected_county",
+            )
+            selected_fips = selected_label.rsplit("(", 1)[-1].rstrip(")")
+            selected_prefix = selected_label.rsplit("(", 1)[0].rstrip().rstrip(",")
+            if "," in selected_prefix:
+                selected_county, selected_state = [part.strip() for part in selected_prefix.rsplit(",", 1)]
             else:
-                selected_county = "—"
-                selected_state = state_filter
+                selected_county, selected_state = selected_prefix.strip(), "—"
             render_kpi_cards(
                 [
-                    ("Selected county FIPS", selected_fips or "Click a row"),
-                    ("Selected county", f"{selected_county}, {selected_state}" if selected_fips else "—"),
+                    ("Selected county FIPS", selected_fips),
+                    ("Selected county", f"{selected_county}, {selected_state}"),
                     ("County search", county_search or "—"),
                 ]
             )
-            if st.button("Use this FIPS in Explorer", key="directory_apply_fips", disabled=selected_fips is None):
+            if st.button("Use this FIPS in Explorer", key="directory_apply_fips"):
                 st.session_state["pending_county_fips"] = selected_fips
                 st.session_state["last_county_fips"] = selected_fips
                 sync_query_params()
